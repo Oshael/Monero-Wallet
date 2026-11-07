@@ -1,0 +1,17 @@
+.local/
+node_modules/
+dist/
+build/
+npm-cache/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+
+# Disposable browser profiles and wallet fixtures.
+experiments/wallet-mv3/run-*/
+experiments/wallet-mv3/rpc-run-*/
+experiments/wallet-mv3/source/
+experiments/wallet-mv3/extension/
+experiments/wallet-mv3/monero-wallet-cli

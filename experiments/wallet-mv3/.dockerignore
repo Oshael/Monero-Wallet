@@ -1,0 +1,4 @@
+*
+!Dockerfile.native
+!prepare-native-wasm.sh
+!build-native-wasm.sh

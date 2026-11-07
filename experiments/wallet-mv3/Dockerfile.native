@@ -1,0 +1,21 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential ca-certificates cmake curl git perl pkg-config python3 xz-utils \
+        libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind-dev \
+        liblzma-dev libreadline-dev libexpat1-dev libpgm-dev libhidapi-dev \
+        libusb-1.0-0-dev libprotobuf-dev protobuf-compiler libudev-dev \
+        libboost-chrono-dev libboost-date-time-dev libboost-filesystem-dev \
+        libboost-locale-dev libboost-program-options-dev libboost-regex-dev \
+        libboost-serialization-dev libboost-system-dev libboost-thread-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY prepare-native-wasm.sh build-native-wasm.sh /opt/wallet-build/
+
+WORKDIR /root/monero-gate-a
+
+CMD ["bash", "/opt/wallet-build/prepare-native-wasm.sh"]
