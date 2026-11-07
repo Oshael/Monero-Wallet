@@ -111,3 +111,21 @@ The [native Dockerfile](Dockerfile.native) installs its toolchain prerequisites 
 Build the image from `experiments/wallet-mv3`. Run it with a dedicated work directory mounted at `/root/monero-gate-a`, explicit CPU and memory limits and no published ports. Set `WALLET_BUILD_JOBS` from 1 to 4. The build downloads its dependencies through the container network. Record the source commit, image ID, resource limits, artifact hashes and relevant service health checks in ignored local operational records. Verify existing services and configuration fingerprints before and after the run.
 
 The owner interrupted the Mac VM compile before it produced a final native artifact and moved this work to the VPS. Source synchronization authorizes this isolated experiment. Deployment remains a separate delivery step.
+
+### Native build results
+
+The native compile from source commit `43052c3f6b40d977fb29e4b628939c584e3633be` completed in the isolated Linux container. Its inputs were the pinned Monero sources, Emscripten `3.1.66`, Boost `1.83.0` and the verified archives above. The worker assembly passed TypeScript checking and used Node `24.18.1` with the project dependency patch. The native artifact differs from the previously published upstream artifact.
+
+| Artifact | SHA-256 |
+|---|---|
+| Generated `monero.js` glue | `8e3ad071c941ecf7ad84e1b7410d1909b715f39481f3f2febc6cf34555c8c5a0` |
+| Embedded WASM, 6,071,538 bytes | `46eb59a5b469d403193fb7b66ae0e2710140239d0bd0e72fffc939997f9b7a15` |
+| Assembled worker, 3,214,926 bytes | `398a6bc8d6ca0700b660d0c98cdb90a42652c02a0df172dc466c2cd258648630` |
+
+The worker verifier confirmed the embedded payload matches the native artifact, Axios is `1.21.0`, qs is `6.17.1` and the excluded Node crypto packages are absent from the source map. The native linker command and map contained no `libssl` or `libcrypto` references. The linker reported seven undefined symbols whose names also occur in the published upstream glue. Reaching those paths and their behavior still require investigation.
+
+The existing recovery and RPC fixtures passed with Playwright `1.62.1`, Chromium `151.0.7922.34` and the signature-verified official Monero CLI `0.18.5.4`. They covered creation and same-engine restoration, independent CLI address recovery, modified mnemonic checksum rejection, browser entropy use and rejection on entropy failure, JSON, binary request/response and HTTP 503 handling. These tests used disposable stagenet wallets. The browser container ran as `pwuser` with its Chromium sandbox enabled and external networking disabled. Compare the image's actual UID and GID before assigning ownership of the test directory. The first launch used a mismatched UID and failed to load Playwright. The corrected launch completed with exit zero.
+
+Native, worker and browser stages completed with exit zero. The project builder was stopped after recording the artifacts. Configuration fingerprints matched the pre-build baseline and the previously running services and containers remained active. Operational evidence and image identifiers are kept in ignored local records.
+
+Only one native compilation was completed. Native byte-for-byte reproducibility, a maintained release toolchain, complete native license review, authenticated RPC, persistence, realistic synchronization, transfers and interruption recovery still require evidence.

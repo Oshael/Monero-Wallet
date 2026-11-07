@@ -1,6 +1,6 @@
 # Monero Browser Wallet — Architecture, Security and Delivery Plan
 
-Version: 0.4 — 2026-11-07
+Version: 0.5 — 2026-11-07
 
 Status: owner-reviewed planning baseline with Gate A evidence. Wallet engine adoption is paused for dependency review. DEX route feasibility remains open.
 
@@ -8,7 +8,7 @@ Status: owner-reviewed planning baseline with Gate A evidence. Wallet engine ado
 
 Build a simple browser-extension wallet for native Monero (XMR), with DEX-only cross-chain swaps without KYC, a disclosed project swap fee, and a treasury policy allocating part of collected revenue to buying a project token on Solana.
 
-This is a separate product proposal. It is not an approved addition to 0xDMme and must not inherit its accounts, database, deployment, credentials or public identity. Product name and repository are pending. Existing 0xDMme changes and services must remain untouched.
+This is a separate product proposal. It is not an approved addition to 0xDMme and must not inherit its accounts, database, deployment, credentials or public identity. Product name is pending. The owner selected the [project source repository](https://github.com/Oshael/Monero-Wallet). Existing 0xDMme changes and services must remain untouched.
 
 ### Confirmed direction from the owner
 
@@ -50,7 +50,7 @@ This is the starting point for the project. Validate the architecture-defining u
 1. **Build the local XMR wallet prototype.** Start with the relevant Gate A dependency/license and browser-runtime checks, then develop the minimal extension-owned wallet flow covered by Gate B: local creation, encrypted storage, backup, restore, synchronization, and receiving/sending stagenet XMR. Keep keys, private view keys, transaction validation and signing on the user's device. Measure synchronization time, memory, traffic, storage and interruption/restart behavior early, including the representative workloads already required by Gate A. Stagenet transfers demonstrate correctness, not mainnet-scale performance or production readiness. Deliver a reproducible prototype, its observed limitations and measured results; retain code that meets the project's quality and security requirements for the product.
 2. **Investigate BasicSwap's separation of coordination and signing.** First inspect the current source and interfaces to establish where keys, signing authority, protocol state and refund actions live. Determine whether existing interfaces can support server-side offer/message coordination and monitoring while the user's device independently validates and authorizes all fund movements. Check external-signing support and required client-side proof/recovery behavior; do not assume these capabilities exist. If the code supports a credible path, make a narrow local feasibility experiment using test assets where the protocol supports them, covering an accepted operation, rejection of tampered server instructions, and recovery/interruption behavior. Mocks alone do not prove protocol compatibility. If the separation requires material protocol changes or a different runtime, document the gap and options before implementing that alternative.
 
-**Boundary:** our server may perform work for the swap, but must not hold user wallet keys, possess an unrestricted signing capability or cause the client to sign unchecked transactions. Run feasibility services locally; this first step does not require a production VPS deployment or mainnet funds. Any dependency on a native companion, watchtower, additional custody or changed privacy policy remains subject to the existing approval boundaries.
+**Boundary:** our server may perform work for the swap, but must not hold user wallet keys, possess an unrestricted signing capability or cause the client to sign unchecked transactions. Run feasibility services in an isolated project-owned environment under the owner's authorization. Any dependency on a native companion, watchtower, additional custody or changed privacy policy remains subject to the existing approval boundaries.
 
 **Completion evidence:** the wallet prototype and early measurements identify whether the chosen browser engine is viable; the BasicSwap investigation records a supported path with concrete evidence, a bounded unproven hypothesis, or a confirmed blocker. A blocker pauses the affected swap integration while independent wallet work can continue. Do not build the complete Relay composition, production swap interface, fee collection or treasury automation on an assumed BasicSwap integration. Continue through the applicable delivery gates rather than treating this first step as a public-release approval.
 
@@ -416,17 +416,17 @@ Begin with the two workstreams in section 1. Gate A is evaluated per dependency:
 - Specify each route's locally verifiable funding conditions, required recovery material, external signer dependencies and backup checkpoints. Reject routes that cannot meet the approved funding/recovery gates without giving the operator user keys.
 - Document unresolved commercial/privacy/security conflicts before affected implementation.
 
-**Observed evidence:** The [offline MV3 probe](experiments/wallet-mv3/README.md) exercised the published `monero-ts@0.11.22` worker in Chromium. It created a stagenet wallet offline and restored the same primary address in a new worker. The probe passed again on page reload. The official Monero CLI `0.18.5.4` restored the same address from the generated 25-word mnemonic and rejected a modified checksum word. Wallet creation called the browser's secure RNG and failed when it was denied. The source rebuild, encrypted persistence, representative sync measurements and funded stagenet flows remain pending. Section 7 records the separate BasicSwap API blocker.
+**Observed evidence:** The [offline MV3 probe](experiments/wallet-mv3/README.md) exercised the published `monero-ts@0.11.22` worker and the worker assembled with the project-compiled WASM in Chromium. They created stagenet wallets offline and restored the same primary address. The official Monero CLI `0.18.5.4` restored the same address from the generated 25-word mnemonic and rejected a modified checksum word. Wallet creation called the browser's secure RNG and failed when it was denied. The independently compiled candidate passed loopback JSON, binary and HTTP 503 cases. Encrypted persistence, representative sync measurements and funded stagenet flows remain pending. Section 7 records the separate BasicSwap API blocker.
 
 **Engine adoption hold**
 
-The [dependency review](experiments/wallet-mv3/README.md#dependency-review) found an unsupported OpenSSL series in the default build recipe and two affected JavaScript dependency versions in the worker. The recipe finding establishes a build input. Published WASM linkage and exploitability in the wallet flow have not been established. Adoption requires a reviewed dependency set, an isolated source rebuild and runtime evidence.
+The [dependency review](experiments/wallet-mv3/README.md#dependency-review) found an unsupported OpenSSL series in the default build recipe and two affected JavaScript dependency versions in the worker. The project worker updates those dependencies and omits the Node crypto polyfill. The project native build generated OpenSSL LTS headers and completed without linking `libssl` or `libcrypto`, according to its linker command and map. The candidate still requires native license and toolchain review, authenticated RPC validation and the remaining wallet feasibility evidence before adoption.
 
 **Owner decision**
 
 Look for a corrected upstream revision first and maintain a project build of the same engine if the upstream review yields no suitable revision. The registry, release tag, default branch and relevant public branches and pull requests reviewed did not provide those fixes. Start the project build by isolating the browser worker's JavaScript changes from the native WASM source rebuild. The worker build owns the dependency lock and bundle assembly. Upstream retains the wallet protocol, key custody and RPC behavior. Candidate validation must cover licenses, worker behavior, recovery and node synchronization. A replacement engine remains a separate decision.
 
-The [project worker build](experiments/wallet-mv3/README.md#project-worker-build) pins newer JavaScript dependencies and removes the Node crypto polyfill from the browser bundle. A clean reinstall reproduced it from the pinned source and lockfile. It passed offline creation, entropy and official CLI recovery checks in Chromium. The loopback RPC fixture passed JSON, binary and HTTP 503 cases. Both the upstream and project workers timed out on an HTTP Digest challenge in the headless test. Its native WASM is byte-identical to the upstream release. Independent native compilation, toolchain review and authenticated RPC validation remain required for adoption.
+The [project worker build](experiments/wallet-mv3/README.md#project-worker-build) pins newer JavaScript dependencies and removes the Node crypto polyfill from the browser bundle. A clean reinstall reproduced the JavaScript worker with the published WASM. The [native source build](experiments/wallet-mv3/README.md#native-build-results) subsequently compiled a new WASM from pinned sources and passed the offline creation, entropy, CLI recovery and loopback RPC checks. Its native artifact differs from the published WASM. The linker reported seven undefined symbols also present in the published glue. Supported use of those paths remains unverified. HTTP Digest authentication timed out in the earlier upstream and project-worker headless tests and remains unresolved.
 
 The owner authorized Git source synchronization and moving the isolated compilation and test work to the existing VPS. Stop the local build and use a project-owned directory and container or VM with explicit resource limits and preservation checks for other projects. Host package changes, shared service restarts, deployment and mainnet activity require their own authorization. The interrupted local native compile is incomplete evidence.
 
@@ -479,7 +479,7 @@ Egress tests are evidence for tested paths, not proof against every possible mal
 
 | Decision | Recommended starting point | Required evidence/owner input |
 |---|---|---|
-| Product identity | Separate from 0xDMme | Name and repository |
+| Product identity | Separate from 0xDMme | Public name pending; source repository selected by owner |
 | Engine and seed format | Maintained Core-derived WASM | Compatibility, provenance and recovery proof |
 | Wallet architecture | Local scanning, no shared view key | Browser performance proof |
 | Browser support | Desktop Chromium first | Explicit support matrix |
@@ -496,7 +496,7 @@ Egress tests are evidence for tested paths, not proof against every possible mal
 
 **Next action**
 
-Rebuild the native WASM from source in an isolated environment with reviewed inputs and inventory the resulting native dependencies. Review the worker build and test toolchain. Repeat the browser entropy and recovery checks with the independently built WASM before integrating persistence or network access. Keep swap execution paused until a route supports client-side verification, signing and recovery.
+Review native dependency licenses, the toolchain and unresolved linker paths using the compiled candidate. Validate authenticated RPC and the public wallet API before implementing encrypted persistence and representative node synchronization measurements. Keep swap execution paused until a route supports client-side verification, signing and recovery.
 
 ## 13. Source register
 

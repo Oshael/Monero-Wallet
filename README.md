@@ -5,6 +5,6 @@ This repository contains the architecture plan and Gate A experiments for a brow
 - [Architecture, security and delivery plan](MONERO_WALLET_PROJECT_PLAN.md)
 - [Manifest V3, recovery, entropy and worker build experiments](experiments/wallet-mv3/README.md)
 
-The JavaScript worker build passed the documented offline and loopback checks. The native WASM source build was interrupted before completion when the owner moved compilation to a VPS. Native runtime validation remains pending.
+The native WASM was compiled from pinned sources in an isolated container and bundled with the project worker. Offline creation, independent CLI recovery, entropy checks and loopback RPC tests passed in Chromium. Dependency and toolchain review, authenticated RPC, encrypted persistence and representative synchronization measurements remain pending.
 
 Run the native compiler in a project-owned container or VM. Its prerequisites and commands are documented in the experiment. Remote checkout and build operations must use a dedicated directory and explicit resource limits. Infrastructure access details and operational evidence belong in the ignored `.local/` directory.
