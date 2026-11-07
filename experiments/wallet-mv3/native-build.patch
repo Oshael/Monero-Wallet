@@ -1,0 +1,84 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 1f1387d..e821b18 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -6,7 +6,7 @@ project(monero-ts-wasm)
+ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS wasm_exception_whitelist.txt) # reconfigure when the whitelist changes so flags are not stale
+ file(STRINGS wasm_exception_whitelist.txt WASM_EXCEPTION_WHITELIST)
+ string(REPLACE ";" "," WASM_EXCEPTION_WHITELIST "${WASM_EXCEPTION_WHITELIST}")
+-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -Oz -s EXCEPTION_CATCHING_ALLOWED='[${WASM_EXCEPTION_WHITELIST}]' -D_REENTRANT")
++SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Oz -s EXCEPTION_CATCHING_ALLOWED='[${WASM_EXCEPTION_WHITELIST}]' -D_REENTRANT")
+ add_definitions(-DAUTO_INITIALIZE_EASYLOGGINGPP -DNO_AES)
+ add_definitions(-DCONFIGURED=1) # vendored libsodium sources warn when built outside its configure script
+ 
+@@ -297,22 +297,22 @@ EMCC_LINKER_FLAGS_BASE
+ # unsure if the -I...boost..include is necessary here due to include above
+ # TODO? does EXPORT_NAME need to be the same for both targets? (or should it be set per-target with …_WASM, …_ASMJS?)
+ 
+-"-Wall -Werror -Wno-js-compiler -Wl,--allow-undefined -std=c++14 -Oz -D_REENTRANT \
++"-Wall -Werror -Wno-js-compiler -Wl,--allow-undefined -std=c++17 -Oz -D_REENTRANT \
+ --bind \
+--s MODULARIZE=1 \
++-s ENVIRONMENT=web,worker -s MODULARIZE=1 \
+ -s 'EXPORT_NAME=\"monero_ts\"' \
+ -s ERROR_ON_UNDEFINED_SYMBOLS=0 \
+ -s ASSERTIONS=0 \
+ -s EXIT_RUNTIME=0 \
+--s PRECISE_F32=1 \
++\
+ -s EXCEPTION_DEBUG=0 \
+--s NO_DYNAMIC_EXECUTION=1 \
+--s NODEJS_CATCH_EXIT=0 \
+--s RESERVED_FUNCTION_POINTERS=5 \
+--s EXPORTED_RUNTIME_METHODS='[\"UTF8ToString\",\"stringToUTF8\",\"lengthBytesUTF8\",\"intArrayToString\",\"getTempRet0\",\"addFunction\"]' \
++-s DYNAMIC_EXECUTION=0 \
++\
++-s ALLOW_TABLE_GROWTH=1 \
++-s EXPORTED_RUNTIME_METHODS='[\"HEAP8\",\"HEAPU8\",\"getExceptionMessage\",\"decrementExceptionRefcount\",\"UTF8ToString\",\"stringToUTF8\",\"lengthBytesUTF8\",\"intArrayToString\",\"getTempRet0\",\"addFunction\"]' \
+ -s SINGLE_FILE=1 \
+ -s ALLOW_MEMORY_GROWTH=1 \
+--s WASM_BIGINT=1 \
++\
+ -s EXPORTED_FUNCTIONS='[_free, _malloc]' \
+ -s STACK_SIZE=5MB \
+ -s DEFAULT_PTHREAD_STACK_SIZE=2MB \
+diff --git a/src/main/cpp/http_client_wasm.cpp b/src/main/cpp/http_client_wasm.cpp
+index 8d8a3a1..bf7411e 100644
+--- a/src/main/cpp/http_client_wasm.cpp
++++ b/src/main/cpp/http_client_wasm.cpp
+@@ -12,9 +12,9 @@ using namespace std;
+ EM_JS(const char*, js_send_json_request, (int client, const char* uri, const char* username, const char* password, const char* proxy_uri, const char* reject_unauthorized_fn_id, const char* method, const char* body, std::chrono::milliseconds timeout), {
+   //console.log("EM_JS js_send_json_request(" + UTF8ToString(uri) + ", " + UTF8ToString(username) + ", " + UTF8ToString(password) + ", " + UTF8ToString(method) + ")");
+ 
+-  const HttpClient = this.HttpClient;
+-  const LibraryUtils = this.LibraryUtils;
+-  const GenUtils = this.GenUtils;
++  const HttpClient = globalThis.HttpClient;
++  const LibraryUtils = globalThis.LibraryUtils;
++  const GenUtils = globalThis.GenUtils;
+ 
+   // use asyncify to synchronously return to C++
+   return Asyncify.handleSleep(function(wakeUp) {
+@@ -74,9 +74,9 @@ EM_JS(const char*, js_send_json_request, (int client, const char* uri, const cha
+ EM_JS(const char*, js_send_binary_request, (int client, const char* uri, const char* username, const char* password, const char* proxy_uri, const char* reject_unauthorized_fn_id, const char* method, const char* body, int body_length, std::chrono::milliseconds timeout), {
+   //console.log("EM_JS js_send_binary_request(" + UTF8ToString(uri) + ", " + UTF8ToString(username) + ", " + UTF8ToString(password) + ", " + UTF8ToString(method) + ")");
+ 
+-  const HttpClient = this.HttpClient;
+-  const LibraryUtils = this.LibraryUtils;
+-  const GenUtils = this.GenUtils;
++  const HttpClient = globalThis.HttpClient;
++  const LibraryUtils = globalThis.LibraryUtils;
++  const GenUtils = globalThis.GenUtils;
+ 
+   // use asyncify to synchronously return to C++
+   return Asyncify.handleSleep(function(wakeUp) {
+diff --git a/src/main/cpp/monero_wasm_bridge.cpp b/src/main/cpp/monero_wasm_bridge.cpp
+index 81c3261..ff6a1f6 100644
+--- a/src/main/cpp/monero_wasm_bridge.cpp
++++ b/src/main/cpp/monero_wasm_bridge.cpp
+@@ -1,4 +1,5 @@
+ #include <iostream>
++#include <emscripten/emscripten.h>
+ #include "monero_wasm_bridge.h"
+ #include "wallet/monero_wallet_keys.h"
+ #include "utils/gen_utils.h"

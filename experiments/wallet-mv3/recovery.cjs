@@ -60,18 +60,33 @@ async function browserFixture(page) {
 async function restoreWithCli(seed, scratch, label) {
   const wallet = path.join(scratch, label);
   const password = randomBytes(24).toString('hex');
-  const { status, signal, error } = spawnSync(path.join(__dirname, 'monero-wallet-cli'), [
-    '--offline', '--stagenet', '--log-file', '/dev/null',
-    '--shared-ringdb-dir', path.join(scratch, 'ringdb'), '--subaddress-lookahead', '2:4',
-    '--generate-new-wallet', wallet, '--restore-deterministic-wallet',
-    '--restore-height', '0', '--create-address-file', 'address',
-  ], {
-    cwd: scratch,
-    env: { ...process.env, TERM: 'dumb', LC_ALL: 'C' },
-    input: `${seed}\n\n${password}\n${password}\n`,
-    stdio: ['pipe', 'ignore', 'ignore'],
-    timeout: 30_000,
-  });
+  const { status, signal, error } = spawnSync(
+    path.join(__dirname, 'monero-wallet-cli'),
+    [
+      '--offline',
+      '--stagenet',
+      '--log-file',
+      '/dev/null',
+      '--shared-ringdb-dir',
+      path.join(scratch, 'ringdb'),
+      '--subaddress-lookahead',
+      '2:4',
+      '--generate-new-wallet',
+      wallet,
+      '--restore-deterministic-wallet',
+      '--restore-height',
+      '0',
+      '--create-address-file',
+      'address',
+    ],
+    {
+      cwd: scratch,
+      env: { ...process.env, TERM: 'dumb', LC_ALL: 'C' },
+      input: `${seed}\n\n${password}\n${password}\n`,
+      stdio: ['pipe', 'ignore', 'ignore'],
+      timeout: 30_000,
+    },
+  );
   let address;
   try {
     address = (await fs.readFile(`${wallet}.address.txt`, 'utf8')).trim();
@@ -105,27 +120,39 @@ async function main() {
     const id = await page.locator('extensions-item').getAttribute('id', { timeout: 5_000 });
     check(/^[a-p]{32}$/.test(id), 'The test extension did not load.');
     await page.goto(`chrome-extension://${id}/probe.html`);
-    const previous = await page.locator('#result:not([data-state="running"])').getAttribute('data-state', { timeout: 25_000 });
+    const previous = await page
+      .locator('#result:not([data-state="running"])')
+      .getAttribute('data-state', { timeout: 25_000 });
     check(previous === 'passed', 'The baseline browser probe did not pass.');
     const fixture = await browserFixture(page);
     check(fixture.entropyCalls > 0, 'Wallet creation did not call browser entropy.');
-    check(fixture.deniedCalls > 0 && fixture.deniedRejected, 'Wallet creation did not reject denied entropy.');
+    check(
+      fixture.deniedCalls > 0 && fixture.deniedRejected,
+      'Wallet creation did not reject denied entropy.',
+    );
     const words = fixture.seed.trim().split(/\s+/);
     check(words.length === 25, 'The browser seed did not have 25 words.');
     const restored = await restoreWithCli(fixture.seed, scratch, 'restore');
-    check(restored.status === 0 && restored.address === fixture.address,
-      `CLI restore did not produce a matching address (status ${restored.status}, signal ${restored.signal}, error ${restored.error}, address present ${Boolean(restored.address)}).`);
+    check(
+      restored.status === 0 && restored.address === fixture.address,
+      `CLI restore did not produce a matching address (status ${restored.status}, signal ${restored.signal}, error ${restored.error}, address present ${Boolean(restored.address)}).`,
+    );
     words[24] = words.find((word) => word !== words[24]);
     const corrupted = await restoreWithCli(words.join(' '), scratch, 'checksum-rejection');
-    check(corrupted.status === 1 && !corrupted.address, 'The CLI accepted the modified mnemonic checksum.');
-    console.log(JSON.stringify({
-      browser: context.browser().version(),
-      seedWordCount: 25,
-      cliAddressMatch: true,
-      changedChecksumRejected: true,
-      browserEntropyUsed: true,
-      deniedEntropyRejected: true,
-    }));
+    check(
+      corrupted.status === 1 && !corrupted.address,
+      'The CLI accepted the modified mnemonic checksum.',
+    );
+    console.log(
+      JSON.stringify({
+        browser: context.browser().version(),
+        seedWordCount: 25,
+        cliAddressMatch: true,
+        changedChecksumRejected: true,
+        browserEntropyUsed: true,
+        deniedEntropyRejected: true,
+      }),
+    );
   } finally {
     try {
       if (context) await context.close();

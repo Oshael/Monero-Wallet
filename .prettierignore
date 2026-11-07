@@ -1,0 +1,16 @@
+.local/
+AGENTS.md
+**/._*
+node_modules/
+dist/
+build/
+vendor/
+package-lock.json
+experiments/wallet-mv3/worker-build.patch
+experiments/wallet-mv3/native-build.patch
+experiments/wallet-mv3/native-core.patch
+experiments/wallet-mv3/native-wallet.patch
+experiments/wallet-mv3/source/
+experiments/wallet-mv3/extension/
+experiments/wallet-mv3/run-*/
+experiments/wallet-mv3/rpc-run-*/

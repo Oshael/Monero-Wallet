@@ -20,23 +20,27 @@ function request(worker, method, ...args) {
       reject(new Error(`${method} ${reason}.`));
     }
 
-    worker.addEventListener('message', ({ data }) => {
-      cleanup();
-      if (!Array.isArray(data)) {
-        fail('returned an unexpected response');
-        return;
-      }
-      const [replyWalletId, replyCallbackId, reply] = data;
-      if (replyWalletId !== walletId || replyCallbackId !== callbackId || !reply) {
-        fail('returned an unexpected response');
-        return;
-      }
-      if (reply.error) {
-        fail('failed in the wallet engine');
-        return;
-      }
-      resolve(reply.result);
-    }, options);
+    worker.addEventListener(
+      'message',
+      ({ data }) => {
+        cleanup();
+        if (!Array.isArray(data)) {
+          fail('returned an unexpected response');
+          return;
+        }
+        const [replyWalletId, replyCallbackId, reply] = data;
+        if (replyWalletId !== walletId || replyCallbackId !== callbackId || !reply) {
+          fail('returned an unexpected response');
+          return;
+        }
+        if (reply.error) {
+          fail('failed in the wallet engine');
+          return;
+        }
+        resolve(reply.result);
+      },
+      options,
+    );
     worker.addEventListener('error', () => fail('raised a worker error'), options);
     worker.postMessage([walletId, method, callbackId, ...args]);
   });

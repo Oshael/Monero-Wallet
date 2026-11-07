@@ -1,0 +1,41 @@
+--- a/src/wallet/monero_wallet_full.cpp
++++ b/src/wallet/monero_wallet_full.cpp
+@@ -2695,14 +2695,15 @@
+   monero_tx_set monero_wallet_full::describe_tx_set(const monero_tx_set& tx_set) {
+     assert_not_closed();
+ 
+-    // get unsigned and multisig tx sets
++    // Decode local unsigned, signed or multisig transaction sets.
+     std::string unsigned_tx_hex = tx_set.m_unsigned_tx_hex == boost::none ? "" : tx_set.m_unsigned_tx_hex.get();
++    std::string signed_tx_hex = tx_set.m_signed_tx_hex == boost::none ? "" : tx_set.m_signed_tx_hex.get();
+     std::string multisig_tx_hex = tx_set.m_multisig_tx_hex == boost::none ? "" : tx_set.m_multisig_tx_hex.get();
+ 
+     // validate request
+     if (m_w2->key_on_device()) throw std::runtime_error("command not supported by HW wallet");
+     if (m_w2->watch_only()) throw std::runtime_error("command not supported by view-only wallet");
+-    if (unsigned_tx_hex.empty() && multisig_tx_hex.empty()) throw std::runtime_error("no txset provided");
++    if (unsigned_tx_hex.empty() && signed_tx_hex.empty() && multisig_tx_hex.empty()) throw std::runtime_error("no txset provided");
+ 
+     std::vector <wallet2::tx_construction_data> tx_constructions;
+     std::vector<uint64_t> tx_weights;
+@@ -2717,6 +2718,20 @@
+       }
+       catch (const std::exception &e) {
+         throw std::runtime_error("failed to parse unsigned transfers: " + std::string(e.what()));
++      }
++    } else if (!signed_tx_hex.empty()) {
++      try {
++        cryptonote::blobdata blob;
++        std::vector<tools::wallet2::pending_tx> pending_txs;
++        if (!epee::string_tools::parse_hexstr_to_binbuff(signed_tx_hex, blob)) throw std::runtime_error("Failed to parse hex.");
++        if (!m_w2->parse_tx_from_str(blob, pending_txs, nullptr)) throw std::runtime_error("cannot load signed_txset");
++        for (const auto& pending : pending_txs) {
++          tx_constructions.push_back(pending.construction_data);
++          tx_weights.push_back(cryptonote::get_transaction_weight(pending.tx));
++        }
++      }
++      catch (const std::exception &e) {
++        throw std::runtime_error("failed to parse signed transfers: " + std::string(e.what()));
+       }
+     } else if (!multisig_tx_hex.empty()) {
+       try {

@@ -604,23 +604,76 @@
 +module.exports = configMoneroWebWorker;
 --- a/src/main/ts/common/HttpClient.ts
 +++ b/src/main/ts/common/HttpClient.ts
-@@ -281,7 +281,8 @@
+@@ -147,7 +147,8 @@
+ 
+   // bound the whole request where node agent socket timeouts do not apply
+   protected static getNonAgentTimeout() {
+-    return GenUtils.isBrowser() || GenUtils.isDeno() ? Math.max(HttpClient.CONNECT_TIMEOUT, HttpClient.READ_TIMEOUT) : 0;
++    if (GenUtils.isBrowser()) return 15000;
++    return GenUtils.isDeno() ? Math.max(HttpClient.CONNECT_TIMEOUT, HttpClient.READ_TIMEOUT) : 0;
+   }
+ 
+   // bound the connection phase and socket inactivity
+@@ -246,6 +247,15 @@
+     return normalizedResponse;
+   }
+ 
++  protected static browserRequestPolicy() {
++    if (!GenUtils.isBrowser()) return {};
++    return {
++      maxContentLength: 64 * 1024 * 1024,
++      maxBodyLength: 1024 * 1024,
++      fetchOptions: {redirect: "error"}
++    };
++  }
++
+   protected static axiosDigestAuthRequest = async function(method, url, username, password, body, proxyUri?, rejectUnauthorized?, cancelToken?) {
+     if (typeof CryptoJS === 'undefined' && typeof require === 'function') {
+       var CryptoJS = require('crypto-js');
+@@ -281,7 +291,9 @@
        cancelToken: cancelToken,
        data: body,
        transformResponse: res => res,
 -      adapter: GenUtils.isDeno() ? ['fetch'] : ['http', 'xhr', 'fetch']
++      ...HttpClient.browserRequestPolicy(),
 +      withCredentials: GenUtils.isBrowser() ? false : undefined,
 +      adapter: GenUtils.isDeno() || GenUtils.isBrowser() ? ['fetch'] : ['http', 'xhr', 'fetch']
      }).catch(async (err) => {
        if (err.response?.status === 401) {
          let authHeader = err.response.headers['www-authenticate'].replace(/,\sDigest.*/, "");
-@@ -330,7 +331,8 @@
+@@ -330,7 +342,9 @@
            cancelToken: cancelToken,
            data: body,
            transformResponse: res => res,
 -          adapter: GenUtils.isDeno() ? ['fetch'] : ['http', 'xhr', 'fetch']
++          ...HttpClient.browserRequestPolicy(),
 +          withCredentials: GenUtils.isBrowser() ? false : undefined,
 +          adapter: GenUtils.isDeno() || GenUtils.isBrowser() ? ['fetch'] : ['http', 'xhr', 'fetch']
          });
  
          return finalResponse;
+--- a/src/main/ts/common/LibraryUtils.ts
++++ b/src/main/ts/common/LibraryUtils.ts
+@@ -285,7 +285,22 @@
+   
+   // ------------------------------ PRIVATE HELPERS ---------------------------
+   
++  // Emscripten 6 throws exception objects rather than legacy numeric pointers.
++  protected static initNativeExceptions(wasmModule) {
++    wasmModule.get_exception_message = (error) => {
++      if (!error || !Number.isInteger(error.excPtr) || error.excPtr <= 0) {
++        throw error instanceof Error ? error : new Error("Unsupported native exception");
++      }
++      try {
++        return wasmModule.getExceptionMessage(error)[1] || "Native wallet operation failed";
++      } finally {
++        wasmModule.decrementExceptionRefcount(error);
++      }
++    };
++  }
++
+   protected static initWasmModule(wasmModule) {
++    LibraryUtils.initNativeExceptions(wasmModule);
+     wasmModule.taskQueue = new ThreadPool(1);
+     wasmModule.queueTask = async function(asyncFn) { return wasmModule.taskQueue.submit(asyncFn); }
+     if (LibraryUtils.LOG_LEVEL > 0) wasmModule.set_log_level(LibraryUtils.LOG_LEVEL); // apply log level set before load

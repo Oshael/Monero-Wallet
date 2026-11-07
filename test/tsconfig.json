@@ -1,0 +1,5 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "types": ["node", "chrome"] },
+  "include": ["unit/**/*.ts", "browser/**/*.ts", "../src/engine/candidate.d.ts"]
+}

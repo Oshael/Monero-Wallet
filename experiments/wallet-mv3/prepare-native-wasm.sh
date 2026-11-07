@@ -34,15 +34,33 @@ download() {
 
 checkout monero-ts https://github.com/woodser/monero-ts.git f6569ca616c4723645a7bfae3a843a0358f5fca9
 timeout 900 git -C monero-ts submodule update --init --recursive --depth 1 --jobs 4
-checkout emsdk https://github.com/emscripten-core/emsdk.git a72a42afc3700174023ade6bf83aa79892bb783c
+checkout emsdk https://github.com/emscripten-core/emsdk.git 35659964bc2762fffec0d257997fb61475f765b7
 (
   cd emsdk
-  timeout 900 ./emsdk install 3.1.66
-  ./emsdk activate 3.1.66
+  timeout 900 ./emsdk install 6.0.13
+  ./emsdk activate 6.0.13
 )
+
+git -C monero-ts apply --check /opt/wallet-build/native-build.patch
+git -C monero-ts apply /opt/wallet-build/native-build.patch
+cpp=monero-ts/external/monero-cpp
+git -C "$cpp" apply --check /opt/wallet-build/native-wallet.patch
+git -C "$cpp" apply /opt/wallet-build/native-wallet.patch
+core=monero-ts/external/monero-cpp/external/monero-project
+git -C "$core" apply --check /opt/wallet-build/native-core.patch
+git -C "$core" apply /opt/wallet-build/native-core.patch
 
 download boost_1_83_0.tar.gz https://archives.boost.io/release/1.83.0/source/boost_1_83_0.tar.gz 160000000
 download unbound-1.22.0.tar.gz https://nlnetlabs.nl/downloads/unbound/unbound-1.22.0.tar.gz 20000000
 download openssl-3.5.9.tar.gz https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz 60000000
+download libsodium-1.0.18-LICENSE https://raw.githubusercontent.com/jedisct1/libsodium/1.0.18/LICENSE 8192
+download easyloggingpp-9.96.7-LICENSE https://raw.githubusercontent.com/abumq/easyloggingpp/v9.96.7/LICENSE 8192
+(
+  cd inputs
+  sha256sum -c <<'CHECKSUMS'
+dea1855c9809f3faf22aa4a1fba20ec8af5a5587f23115012e5b98279cedc4af  libsodium-1.0.18-LICENSE
+bd30b865b9808a6637145bf02df92c06b0c21307e170f4bdf30b2e277f6cda35  easyloggingpp-9.96.7-LICENSE
+CHECKSUMS
+)
 
 bash /opt/wallet-build/build-native-wasm.sh

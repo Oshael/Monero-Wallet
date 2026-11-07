@@ -1,0 +1,100 @@
+# Wallet development
+
+Use Node `24.18.1` or newer within the 24.x line and npm `11.16.0`.
+Install locked application dependencies with scripts disabled:
+
+```sh
+npm ci --ignore-scripts --no-audit --no-fund
+npm run verify
+```
+
+`verify` combines typed ESLint, strict TypeScript (application and tests), module
+boundaries, Prettier and contract tests. CI repeats it. Generated engine artifacts
+are excluded from Git; application checks do not require them.
+
+## Native engine and extension artifact
+
+Follow the isolated [native recipe](../experiments/wallet-mv3/README.md#native-build-results).
+The current recipe pins Emscripten 6.0.13 and applies `native-build.patch`,
+`native-core.patch` and `native-wallet.patch` to their respective repositories.
+The downloaded native inputs and legal notices have fixed SHA-256 checks.
+
+In the prepared monero-ts checkout, apply `worker-build.patch` from this repository,
+install its patched lockfile with `npm ci --ignore-scripts`, and copy the independently
+built `monero.js` into that checkout's `dist/monero.js`. Do not use its published WASM
+with the current JavaScript exception bridge. Assemble the public ESM client:
+
+```sh
+node experiments/wallet-mv3/build-engine-client.cjs /absolute/path/to/monero-ts "$PWD/vendor"
+node experiments/wallet-mv3/collect-client-notices.cjs /absolute/path/to/monero-ts "$PWD/vendor"
+node scripts/collect-native-notices.mjs /absolute/path/to/native-workspace "$PWD/vendor"
+npm run build
+```
+
+The native workspace contains `monero-ts`, `emsdk`, extracted `openssl-3.5.9` and
+the verified `inputs` directory. The notice collector requires those actual
+build inputs. Preserve all generated license files alongside the client. The
+build adds the full noble-hashes license. The native SHA-256 and matching worker
+payload can be verified with `experiments/wallet-mv3/verify-worker.mjs` after
+building the classic worker in the patched engine checkout.
+
+Load `dist/` as an unpacked extension in a disposable Chromium profile. It is a
+development artifact for stagenet, not an approved public release. The popup
+opens the wallet in a full tab. Choose a compatible node explicitly; the extension
+requests permission for that origin. HTTPS is required except for loopback test
+nodes. No remote executable code or wallet backend is required.
+
+## Browser contracts
+
+Use Playwright `1.62.1` with an unpacked-extension-capable Chromium executable.
+Place a copy of the assembled `dist/` at `test/browser/extension` in a disposable
+staging directory alongside `wallet-flow.cjs`, `client-metrics.cjs` and
+`fixture-budget.cjs` (do not create a tracked fixture artifact). Run the staged script:
+
+```sh
+node /absolute/path/to/staged/wallet-flow.cjs /absolute/path/to/playwright /absolute/path/to/chromium
+```
+
+The runner owns temporary profiles, encrypted backup files and cleanup. It creates
+only disposable wallets, blocks external DNS and reports booleans. It verifies
+backup import after deleting that temporary profile's local database, password
+rotation, label recovery, worker termination and exclusive session ownership.
+`measure-client.cjs` adds sampled browser-process RSS on a local desktop. Summed
+RSS can count shared pages more than once and is not a whole-system memory peak.
+
+`build-sync-probe.mjs` and `run-sync.cjs` measure checkpointed restoration against
+a disposable authenticated stagenet node exposed only at loopback port 38881.
+Stage the probe beside the application's workers and vendor files; grant only
+that loopback origin in the fixture manifest. Pass the node's initial height and
+desired restore height to the runner. It counts request sizes and samples process
+RSS without logging keys or payloads. A trusted synthetic click every minute
+keeps this active-user measurement from invoking the normal inactivity lock.
+The node must be fully synchronized: the native wallet deliberately skips its
+scan while the daemon is behind. An empty restored seed does not represent a
+wallet with a large received-output history, and stagenet does not establish
+mainnet-scale capacity. Report chain height, restore span and dataset alongside
+any results; do not report a skipped scan as performance evidence.
+
+For transaction tests, build `test/browser/build-transaction-probe.mjs` and stage
+its output with the ESM vendor directory and `run-transactions.cjs`. Use the
+official, signature-verified daemon with `daemon-fixture.cjs`, as documented in
+the native experiment. Its regtest uses mainnet address encoding but has no real
+mainnet connection or monetary value. It has fixed difficulty, local-only RPC and
+disposable credentials. It must never reuse a real wallet or live-chain database.
+
+## Recovery and limitations
+
+Keep the 25-word seed independently and verify it in the extension. The encrypted
+backup also includes scan data, labels and node settings. Previously exported
+backups retain their original password after rotation. `unlimitedStorage` protects
+extension data from browser eviction; it does not protect against manual removal,
+disk failure or a compromised unlocked browser. The current payload budget is
+128 MiB and requires validation against representative wallet caches.
+
+After an uncertain broadcast, reconcile or retry the same signed transaction.
+Never create another transaction to compensate for an unknown response. A stale
+or behind node cannot establish current spendability. The extension checks a
+fresh authenticated response from the selected node before preparing a spend;
+the node's assertions still do not constitute an independent network consensus
+proof. Production node/gateway protection and public money use require the
+remaining delivery gates and independent human security review.

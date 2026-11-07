@@ -2,3 +2,6 @@
 !Dockerfile.native
 !prepare-native-wasm.sh
 !build-native-wasm.sh
+!native-build.patch
+!native-core.patch
+!native-wallet.patch

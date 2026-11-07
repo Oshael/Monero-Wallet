@@ -10,10 +10,10 @@ if ! [[ "$build_jobs" =~ ^[1-9][0-9]*$ ]] || [ "$build_jobs" -gt 4 ]; then
 fi
 cd "$HOME/monero-gate-a"
 build_root=$PWD
-test "$(git -C emsdk rev-parse HEAD)" = a72a42afc3700174023ade6bf83aa79892bb783c
+test "$(git -C emsdk rev-parse HEAD)" = 35659964bc2762fffec0d257997fb61475f765b7
 source emsdk/emsdk_env.sh
 export EMSCRIPTEN="$EMSDK/upstream/emscripten"
-emcc --version | grep -F ' 3.1.66 '
+emcc --version | grep -F ' 6.0.13 '
 export LC_ALL=C
 export TZ=UTC
 

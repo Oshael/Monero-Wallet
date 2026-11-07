@@ -1,8 +1,8 @@
 # Monero Browser Wallet — Architecture, Security and Delivery Plan
 
-Version: 0.6 — 2026-11-07
+Version: 0.7 — 2026-11-07
 
-Status: owner-reviewed planning baseline with Gate A evidence. Wallet engine adoption is paused for dependency review. DEX route feasibility remains open.
+Status: experimental local wallet implemented with Gate A/B evidence. Public engine adoption, representative chain-scale validation and independent security review remain open. DEX integration remains paused separately.
 
 ## 1. Purpose and decision status
 
@@ -56,18 +56,18 @@ This is the starting point for the project. Validate the architecture-defining u
 
 ## 2. Recommended stack and rationale
 
-| Layer | Recommendation | Reason and condition |
-|---|---|---|
-| Extension application | TypeScript, strict mode | Shared typed contracts and browser ecosystem; runtime input validation remains mandatory |
-| UI | React with a minimal build setup such as Vite | Familiar tooling; UI must never own persistent key material |
-| Extension platform | Manifest V3, packaged code only | Native desktop browser distribution; prove worker/WASM compatibility first |
-| Wallet engine | Existing Monero Core-derived WASM library behind our adapter | Reuse protocol implementation instead of writing cryptography |
-| Backend | TypeScript on a supported Node.js LTS; small framework such as Fastify | Provider adapters, validation, rate control and ledger workflows |
-| Node | Official monerod release, verified distribution | Network validation and restricted remote-wallet RPC |
-| Persistence | PostgreSQL for operational records and fee ledger | Transactions, uniqueness and recovery for consequential money workflows |
-| Front proxy | HTTPS reverse proxy; reuse established host tooling where appropriate | TLS, method restrictions, timeouts and request budgets |
-| Treasury | Separate process and credentials; offline/external signing initially | Compromise of the web backend must not unlock treasury funds |
-| Quality | ESLint, TypeScript, formatting, dependency boundaries, unit/integration tests and browser smoke tests | Validate correctness and module ownership |
+| Layer                 | Recommendation                                                                                        | Reason and condition                                                                     |
+| --------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Extension application | TypeScript, strict mode                                                                               | Shared typed contracts and browser ecosystem; runtime input validation remains mandatory |
+| UI                    | React with a minimal build setup such as Vite                                                         | Familiar tooling; UI must never own persistent key material                              |
+| Extension platform    | Manifest V3, packaged code only                                                                       | Native desktop browser distribution; prove worker/WASM compatibility first               |
+| Wallet engine         | Existing Monero Core-derived WASM library behind our adapter                                          | Reuse protocol implementation instead of writing cryptography                            |
+| Backend               | TypeScript on a supported Node.js LTS; small framework such as Fastify                                | Provider adapters, validation, rate control and ledger workflows                         |
+| Node                  | Official monerod release, verified distribution                                                       | Network validation and restricted remote-wallet RPC                                      |
+| Persistence           | PostgreSQL for operational records and fee ledger                                                     | Transactions, uniqueness and recovery for consequential money workflows                  |
+| Front proxy           | HTTPS reverse proxy; reuse established host tooling where appropriate                                 | TLS, method restrictions, timeouts and request budgets                                   |
+| Treasury              | Separate process and credentials; offline/external signing initially                                  | Compromise of the web backend must not unlock treasury funds                             |
+| Quality               | ESLint, TypeScript, formatting, dependency boundaries, unit/integration tests and browser smoke tests | Validate correctness and module ownership                                                |
 
 This is a new-project stack proposal, not a request to install dependencies in the current repository. Pin actual versions after inspecting maintenance, licenses, transitive dependencies and runtime compatibility.
 
@@ -155,7 +155,18 @@ The seed must briefly reach an extension-owned view for user backup/import. Avoi
 
 ### Storage capacity and durability
 
-Choose the storage backend during feasibility work, after measuring the selected engine's serialized cache. Chrome's default `storage.local` quota is 10 MB; it is a quota for that API, not a hard limit for every extension storage option. IndexedDB and/or an explicitly reviewed `unlimitedStorage` permission are candidates, not yet selected implementations.
+The prototype uses encrypted IndexedDB records with the owner-approved
+`unlimitedStorage` permission. Chrome's default `storage.local` quota is 10 MB;
+it is a quota for that API, not a hard limit for every extension storage option.
+Representative engine-cache measurements remain required to validate supported
+wallet capacity.
+
+Owner decision on 2026-11-07: use encrypted IndexedDB records and declare
+`unlimitedStorage` in the extension manifest. Chromium declined the plain
+`navigator.storage.persist()` request in the test profile. The owner approved the
+permission to protect local records from automatic eviction, while retaining
+application size bounds, atomic-write failure handling and independent backups.
+This does not add cloud storage or change the client-only custody requirement.
 
 Measure realistic wallets, encrypted records, serialization overhead, retained migration copies and interrupted-write recovery. Encryption adds nonce/tag/metadata overhead; binary-to-base64 encoding adds roughly one third to binary length. Chain-scan caches, wallet outputs and recovery records can dominate seed size. KDF memory usage is a separate RAM budget, not persistent vault size. Preserve the existing valid vault on quota exhaustion or failed writes; never report an unsaved backup/checkpoint as durable, or silently discard recovery evidence to fit a quota.
 
@@ -184,19 +195,19 @@ An older release may contain known vulnerabilities: rollback needs compatibility
 
 ## 5. Threat model and required evidence
 
-| Threat | Preventive controls | Verification and residual risk |
-|---|---|---|
-| Website sends unauthorized signing messages | No web injection; sender validation; approval binding | Malicious-page tests; no signing or secret responses |
-| XSS through quote labels, addresses or metadata | Escaping, strict CSP, no remote markup | Injection corpus and browser tests |
-| Stolen browser profile or vault | Strong password KDF, authenticated encryption, no saved key | Tamper, offline-copy and weak-password analysis; password strength remains material |
+| Threat                                          | Preventive controls                                                                                                      | Verification and residual risk                                                                                                                                  |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Website sends unauthorized signing messages     | No web injection; sender validation; approval binding                                                                    | Malicious-page tests; no signing or secret responses                                                                                                            |
+| XSS through quote labels, addresses or metadata | Escaping, strict CSP, no remote markup                                                                                   | Injection corpus and browser tests                                                                                                                              |
+| Stolen browser profile or vault                 | Strong password KDF, authenticated encryption, no saved key                                                              | Tamper, offline-copy and weak-password analysis; password strength remains material                                                                             |
 | Backend/provider compromise changes destination | Client-owned intent, independent protocol verification, verified local signing and fail-closed funding gate in section 7 | Reject substituted destinations, scripts, refund terms and extra outputs even when the backend reports success; compromised client code remains a separate risk |
-| Malicious or unreliable node | Local engine validation, fee bounds, explicit untrusted-node mode, alternate node | Withheld/malformed data, stale tip and inflated-fee tests; remote node privacy remains limited |
-| Dependency or extension update steals seed | Pinned builds, provenance, independent review, release MFA | Bundle review and egress tests; residual publisher/runtime trust |
-| Browser closes during write/sign/broadcast | Atomic vault persistence, authoritative state, transaction reconciliation | Forced-close/restart tests; never blindly recreate a spend after an ambiguous result |
-| Device loss or seed-only restore during a swap | User-held encrypted recovery bundle covering protocol state and intermediate-asset authority | Restore without backend secrets; incomplete/stale backups or missed protocol deadlines can still cause loss |
-| Duplicate provider callback or retry | Idempotency keys, durable state machine, unique event constraints | Duplicate/out-of-order events and unknown-order-result tests |
-| Host or treasury automation compromise | Signer off public VPS, limited hot balances, spending caps | Unauthorized-spend tests; shared-host root remains a major boundary |
-| Large concurrent restores or abusive RPC | Per-method budgets, connection/time/body limits, monitoring | Capacity and overload tests without exposing user information |
+| Malicious or unreliable node                    | Local engine validation, fee bounds, explicit untrusted-node mode, alternate node                                        | Withheld/malformed data, stale tip and inflated-fee tests; remote node privacy remains limited                                                                  |
+| Dependency or extension update steals seed      | Pinned builds, provenance, independent review, release MFA                                                               | Bundle review and egress tests; residual publisher/runtime trust                                                                                                |
+| Browser closes during write/sign/broadcast      | Atomic vault persistence, authoritative state, transaction reconciliation                                                | Forced-close/restart tests; never blindly recreate a spend after an ambiguous result                                                                            |
+| Device loss or seed-only restore during a swap  | User-held encrypted recovery bundle covering protocol state and intermediate-asset authority                             | Restore without backend secrets; incomplete/stale backups or missed protocol deadlines can still cause loss                                                     |
+| Duplicate provider callback or retry            | Idempotency keys, durable state machine, unique event constraints                                                        | Duplicate/out-of-order events and unknown-order-result tests                                                                                                    |
+| Host or treasury automation compromise          | Signer off public VPS, limited hot balances, spending caps                                                               | Unauthorized-spend tests; shared-host root remains a major boundary                                                                                             |
+| Large concurrent restores or abusive RPC        | Per-method budgets, connection/time/body limits, monitoring                                                              | Capacity and overload tests without exposing user information                                                                                                   |
 
 Security review must include restore height, reorgs, transaction unlock rules, change outputs, fee calculation and wallet-engine error handling. A balance must distinguish total, unlocked and stale/partially scanned states.
 
@@ -229,17 +240,17 @@ The owner rejected KYC-capable intermediary services. ChangeNOW and the previous
 
 The following is a documentation-based research snapshot on 2026-11-06, not an integration selection, audit, executable quote or guarantee of liquidity. Public source/API availability does not mean a free hosted execution service. Supported assets do not establish that every pair has an executable offer.
 
-| Candidate | Native-XMR route and published cost | Integration and present limitation |
-|---|---|---|
-| BasicSwap | Atomic swaps both ways; BTC/XMR and LTC/XMR explicitly documented, PART/XMR in upstream README. 0% protocol trading/service fee; network fees and offered exchange rate still matter | MIT core; JSON API controls a local BasicSwap instance and its wallets. Most relevant atomic-swap feasibility candidate. BasicSwap Web is explicitly not released yet; browser-only integration is unproven |
-| eigenwallet, formerly UnstoppableSwap / COMIT lineage | User-facing taker buys XMR with BTC; maker chooses spread, with network fees and possible anti-spam deposit | GPL-3.0 repository; native client/protocol integration, not a verified public browser execution API. Refund deadline and punish path are material lifecycle risks; reverse retail flow is not established |
-| Haveno / RetoSwap | XMR-based P2P trading with multisig escrow and arbitration. Haveno lists BTC, BCH, ETH, LTC, USDT, USDC, DAI, TRX, SOL, XRP, DOGE, ADA and ZEC; network/offer availability must be checked. Reto advertises 0.1% maker and 0.8% crypto taker fees, plus network fees and offer pricing | Local Haveno daemon, gRPC and haveno-ts; daemon controls the wallet. It is an interactive P2P trade lifecycle, not a generic instant-swap endpoint. Security deposits depend on offer type; no-deposit offers exist. License/distribution and chosen network must be reviewed |
-| Bisq 1 | BTC/XMR P2P escrow trading; BTC-denominated published fees are 0.15% maker / 1.15% taker, with a BSQ discount option; network costs and collateral also apply | Local Bisq daemon and gRPC API; external XMR payment and dispute evidence. Not a drop-in browser router. Do not apply Bisq 1 fees/protocol claims to Bisq 2 |
-| THORChain | Planned native XMR liquidity-pool route; eventual counterpart assets depend on active pools. Liquidity/slippage and outbound fees are variable | Public node APIs exist. Official October updates still gated XMR activation; the mainnet pool list consulted contained no XMR. Code support/stagenet is not evidence of an active production pool. Validator vaults introduce a different trust model from bilateral atomic swaps |
-| Serai | Planned BTC, ETH, DAI and XMR pool architecture | Official site still describes launch prospectively. No production XMR route/liquidity or executable fee schedule was verified; threshold-validator custody requires separate assessment |
-| Athanor | ETH/XMR atomic-swap implementation; network gas and maker pricing | Local swapd JSON-RPC/WebSocket API. Upstream was archived on 2026-09-01 and calls the implementation beta; not a production recommendation without a maintained, reviewed successor |
-| Farcaster atomic-swap project | BTC/XMR protocol implementation | MIT, native daemon collection and gRPC; upstream warns about evolving mainnet software. Current usable liquidity, maintenance and browser integration not verified; research reference only |
-| MoneroSwap | Proposed native EVM-currency/XMR atomic swaps with browser UI | MIT project; official page points to a beta dApp and a Stable testnet contract. Production deployments, audits and liquid mainnet markets not established; experimental only |
+| Candidate                                             | Native-XMR route and published cost                                                                                                                                                                                                                                                    | Integration and present limitation                                                                                                                                                                                                                                                |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| BasicSwap                                             | Atomic swaps both ways; BTC/XMR and LTC/XMR explicitly documented, PART/XMR in upstream README. 0% protocol trading/service fee; network fees and offered exchange rate still matter                                                                                                   | MIT core; JSON API controls a local BasicSwap instance and its wallets. Most relevant atomic-swap feasibility candidate. BasicSwap Web is explicitly not released yet; browser-only integration is unproven                                                                       |
+| eigenwallet, formerly UnstoppableSwap / COMIT lineage | User-facing taker buys XMR with BTC; maker chooses spread, with network fees and possible anti-spam deposit                                                                                                                                                                            | GPL-3.0 repository; native client/protocol integration, not a verified public browser execution API. Refund deadline and punish path are material lifecycle risks; reverse retail flow is not established                                                                         |
+| Haveno / RetoSwap                                     | XMR-based P2P trading with multisig escrow and arbitration. Haveno lists BTC, BCH, ETH, LTC, USDT, USDC, DAI, TRX, SOL, XRP, DOGE, ADA and ZEC; network/offer availability must be checked. Reto advertises 0.1% maker and 0.8% crypto taker fees, plus network fees and offer pricing | Local Haveno daemon, gRPC and haveno-ts; daemon controls the wallet. It is an interactive P2P trade lifecycle, not a generic instant-swap endpoint. Security deposits depend on offer type; no-deposit offers exist. License/distribution and chosen network must be reviewed     |
+| Bisq 1                                                | BTC/XMR P2P escrow trading; BTC-denominated published fees are 0.15% maker / 1.15% taker, with a BSQ discount option; network costs and collateral also apply                                                                                                                          | Local Bisq daemon and gRPC API; external XMR payment and dispute evidence. Not a drop-in browser router. Do not apply Bisq 1 fees/protocol claims to Bisq 2                                                                                                                       |
+| THORChain                                             | Planned native XMR liquidity-pool route; eventual counterpart assets depend on active pools. Liquidity/slippage and outbound fees are variable                                                                                                                                         | Public node APIs exist. Official October updates still gated XMR activation; the mainnet pool list consulted contained no XMR. Code support/stagenet is not evidence of an active production pool. Validator vaults introduce a different trust model from bilateral atomic swaps |
+| Serai                                                 | Planned BTC, ETH, DAI and XMR pool architecture                                                                                                                                                                                                                                        | Official site still describes launch prospectively. No production XMR route/liquidity or executable fee schedule was verified; threshold-validator custody requires separate assessment                                                                                           |
+| Athanor                                               | ETH/XMR atomic-swap implementation; network gas and maker pricing                                                                                                                                                                                                                      | Local swapd JSON-RPC/WebSocket API. Upstream was archived on 2026-09-01 and calls the implementation beta; not a production recommendation without a maintained, reviewed successor                                                                                               |
+| Farcaster atomic-swap project                         | BTC/XMR protocol implementation                                                                                                                                                                                                                                                        | MIT, native daemon collection and gRPC; upstream warns about evolving mainnet software. Current usable liquidity, maintenance and browser integration not verified; research reference only                                                                                       |
+| MoneroSwap                                            | Proposed native EVM-currency/XMR atomic swaps with browser UI                                                                                                                                                                                                                          | MIT project; official page points to a beta dApp and a Stable testnet contract. Production deployments, audits and liquid mainnet markets not established; experimental only                                                                                                      |
 
 BasicSwap's wider asset catalogue additionally lists BCH, DASH, FIRO, PIVX, DCR, WOW, DOGE and NMC. That catalogue is not a verified all-pairs matrix; check the exact XMR pairing, protocol direction and liquidity before exposing an asset. In particular, do not infer scriptless-to-scriptless support from a list containing both assets.
 
@@ -367,16 +378,16 @@ Publish aggregate policy and executed treasury transaction references without ex
 
 ## 9. Privacy, retention and incident response
 
-| Data | Intended location | Policy |
-|---|---|---|
-| Seed/private keys/password | User device only | Never transmit or log; no operator recovery |
-| Encrypted vault and wallet cache | Local extension storage | User-controlled deletion/export; no default cloud sync |
-| Swap recovery journal and encrypted bundle | Local vault and user-controlled offline export | Secret recovery authority; never upload to backend/support; checkpoint and restore requirements in section 7 |
-| Support diagnostics | User-reviewed minimized export | No wallet/protocol secrets, recovery bundle or authorization credentials; identifiers only when necessary and explicitly disclosed |
-| Provider credentials | Backend secret storage | Never shipped as confidential secrets in the extension |
-| Order/destination/refund metadata | Backend/provider as necessary | Minimize, restrict access, encrypt backups; retention duration must be approved |
-| IP/security access records | Gateway only as operationally necessary | No default full RPC payload logs; short explicit retention |
-| Accounting/treasury records | Restricted ledger | Retention based on applicable obligations; aggregate public reporting |
+| Data                                       | Intended location                              | Policy                                                                                                                             |
+| ------------------------------------------ | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Seed/private keys/password                 | User device only                               | Never transmit or log; no operator recovery                                                                                        |
+| Encrypted vault and wallet cache           | Local extension storage                        | User-controlled deletion/export; no default cloud sync                                                                             |
+| Swap recovery journal and encrypted bundle | Local vault and user-controlled offline export | Secret recovery authority; never upload to backend/support; checkpoint and restore requirements in section 7                       |
+| Support diagnostics                        | User-reviewed minimized export                 | No wallet/protocol secrets, recovery bundle or authorization credentials; identifiers only when necessary and explicitly disclosed |
+| Provider credentials                       | Backend secret storage                         | Never shipped as confidential secrets in the extension                                                                             |
+| Order/destination/refund metadata          | Backend/provider as necessary                  | Minimize, restrict access, encrypt backups; retention duration must be approved                                                    |
+| IP/security access records                 | Gateway only as operationally necessary        | No default full RPC payload logs; short explicit retention                                                                         |
+| Accounting/treasury records                | Restricted ledger                              | Retention based on applicable obligations; aggregate public reporting                                                              |
 
 Retention durations and applicable accounting requirements are launch decisions, not an excuse for indefinite storage. Disabling application logs does not erase reverse-proxy, hosting or provider records.
 
@@ -418,6 +429,15 @@ Begin with the two workstreams in section 1. Gate A is evaluated per dependency:
 
 **Observed evidence:** The [offline MV3 probe](experiments/wallet-mv3/README.md) exercised the published `monero-ts@0.11.22` worker and the worker assembled with the project-compiled WASM in Chromium. They created stagenet wallets offline and restored the same primary address. The official Monero CLI `0.18.5.4` restored the same address from the generated 25-word mnemonic and rejected a modified checksum word. Wallet creation called the browser's secure RNG and failed when it was denied. The independently compiled candidate passed loopback JSON, binary and HTTP 503 cases. After a browser transport correction, it passed Digest authentication, wrong-password rejection and a one-block offline regtest wallet sync against official `monerod` `0.18.5.4`. Encrypted persistence, representative sync measurements and funded stagenet flows remain pending. Section 7 records the separate BasicSwap API blocker.
 
+**Subsequent wallet evidence:** [The implementation record](docs/WALLET_IMPLEMENTATION.md)
+supersedes the earlier persistence and toolchain pending items. Encrypted
+IndexedDB, backup/import, password rotation, worker locking and cold signing have
+passing contracts. A clean Emscripten 6.0.13 build reproduced the tested native
+artifact byte for byte. Funded regtest covered integrated addresses, exact receipt,
+approved fees and detached-confirmation recovery. Live-stagenet funded flows and
+representative synchronization measurements remain pending; none of this is a
+public-release approval.
+
 **Engine adoption hold**
 
 The [dependency review](experiments/wallet-mv3/README.md#dependency-review) found an unsupported OpenSSL series in the default build recipe and two affected JavaScript dependency versions in the worker. The project worker updates those dependencies and omits the Node crypto polyfill. The project native build generated OpenSSL LTS headers and completed without linking `libssl` or `libcrypto`, according to its linker command and map. Aborting OpenSSL-related stubs remain among the unresolved native paths. The candidate still requires native license, toolchain and required-operation reachability review and the remaining wallet feasibility evidence before adoption.
@@ -428,7 +448,13 @@ Look for a corrected upstream revision first and maintain a project build of the
 
 The [project worker build](experiments/wallet-mv3/README.md#project-worker-build) pins newer JavaScript dependencies and removes the Node crypto polyfill from the browser bundle. A clean reinstall reproduced the initial JavaScript worker with the published WASM. The [native source build](experiments/wallet-mv3/README.md#native-build-results) subsequently compiled a new WASM from pinned sources and passed the offline creation, entropy, CLI recovery and loopback RPC checks. Its native artifact differs from the published WASM. The linker reported seven undefined symbols; the complete glue inventory found 13 aborting missing-function stubs, all also present in the published glue. Required browser operation reachability remains unverified. The [authenticated daemon regression](experiments/wallet-mv3/README.md#authenticated-daemon-regression) reproduced the earlier HTTP Digest timeout, then passed with a fetch-adapter correction that leaves the upstream Digest calculation unchanged. The native payload was unchanged by that correction.
 
-The owner authorized Git source synchronization and moving the isolated compilation and test work to the existing VPS. Stop the local build and use a project-owned directory and container or VM with explicit resource limits and preservation checks for other projects. Host package changes, shared service restarts, deployment and mainnet activity require their own authorization. The interrupted local native compile is incomplete evidence.
+The owner authorized Git source synchronization and moving isolated compilation
+and testing to the existing VPS, then removed the agent-imposed VPS resource
+ceilings. Use project-owned directories and containers and preserve unrelated
+projects. Client safety limits still apply. Host package changes, shared service
+restarts, deployment and mainnet activity require their own authorization. The
+interrupted local VM compilation is incomplete evidence; the completed isolated
+VPS builds provide the subsequent native evidence.
 
 ### Gate B — local wallet proof on stagenet
 
@@ -477,22 +503,22 @@ Egress tests are evidence for tested paths, not proof against every possible mal
 
 ## 12. Open decisions and next action
 
-| Decision | Recommended starting point | Required evidence/owner input |
-|---|---|---|
-| Product identity | Separate from 0xDMme | Public name pending; source repository selected by owner |
-| Engine and seed format | Maintained Core-derived WASM | Compatibility, provenance and recovery proof |
-| Wallet architecture | Local scanning, no shared view key | Browser performance proof |
-| Browser support | Desktop Chromium first | Explicit support matrix |
-| DEX route | Evaluate BasicSwap first; monitor browser/pool alternatives | DEX/no-KYC eligibility, native XMR, runtime, liquidity, licensing, timeouts and recovery; none selected |
-| Relay first leg | Owner proposal under investigation | Supported intersection, intermediate control, screening/retention, recovery, all-in cost and explicit route approval |
-| Funding verification and swap recovery | Approved local verification gate and user-held encrypted recovery design in section 7 | Route-specific proofs, signing/runtime feasibility, backup format/checkpoints and restore evidence remain pending |
-| Per-order backend authorization | Separate least-privilege credentials, without persistent identity where feasible | Item 3 remains open; never use Monero keys/seed as backend credentials or include authorization secrets in support exports |
-| Project fee | Supported disclosed fee without principal custody | Mechanism, percentage, basis, refund policy and reverse treasury route |
-| Buyback allocation | Settled revenue only | Percentage and deductions |
-| Treasury custody | External signer initially | Signers, caps and operational procedure |
-| Token | Separate Solana workstream | Mint, authorities, liquidity and disposition |
-| Data retention | Approved minimization; explicit schedules still pending | Operational/legal needs, deletion propagation, correlation limits and external retention |
-| Public launch budget | Separate from free development | Security review, store fee and test capital |
+| Decision                               | Recommended starting point                                                            | Required evidence/owner input                                                                                              |
+| -------------------------------------- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Product identity                       | Separate from 0xDMme                                                                  | Public name pending; source repository selected by owner                                                                   |
+| Engine and seed format                 | Maintained Core-derived WASM                                                          | Compatibility, provenance and recovery proof                                                                               |
+| Wallet architecture                    | Local scanning, no shared view key                                                    | Browser performance proof                                                                                                  |
+| Browser support                        | Desktop Chromium first                                                                | Explicit support matrix                                                                                                    |
+| DEX route                              | Evaluate BasicSwap first; monitor browser/pool alternatives                           | DEX/no-KYC eligibility, native XMR, runtime, liquidity, licensing, timeouts and recovery; none selected                    |
+| Relay first leg                        | Owner proposal under investigation                                                    | Supported intersection, intermediate control, screening/retention, recovery, all-in cost and explicit route approval       |
+| Funding verification and swap recovery | Approved local verification gate and user-held encrypted recovery design in section 7 | Route-specific proofs, signing/runtime feasibility, backup format/checkpoints and restore evidence remain pending          |
+| Per-order backend authorization        | Separate least-privilege credentials, without persistent identity where feasible      | Item 3 remains open; never use Monero keys/seed as backend credentials or include authorization secrets in support exports |
+| Project fee                            | Supported disclosed fee without principal custody                                     | Mechanism, percentage, basis, refund policy and reverse treasury route                                                     |
+| Buyback allocation                     | Settled revenue only                                                                  | Percentage and deductions                                                                                                  |
+| Treasury custody                       | External signer initially                                                             | Signers, caps and operational procedure                                                                                    |
+| Token                                  | Separate Solana workstream                                                            | Mint, authorities, liquidity and disposition                                                                               |
+| Data retention                         | Approved minimization; explicit schedules still pending                               | Operational/legal needs, deletion propagation, correlation limits and external retention                                   |
+| Public launch budget                   | Separate from free development                                                        | Security review, store fee and test capital                                                                                |
 
 **Next action**
 

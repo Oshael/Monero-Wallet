@@ -2,11 +2,13 @@
 node_modules/
 dist/
 build/
+vendor/
 npm-cache/
 .env
 .env.*
 !.env.example
 .DS_Store
+._*
 *.log
 
 # Disposable browser profiles and wallet fixtures.

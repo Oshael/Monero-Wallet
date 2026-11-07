@@ -1,2 +1,5 @@
 # Unified diff context lines must retain their whitespace.
 experiments/wallet-mv3/worker-build.patch whitespace=-blank-at-eol
+experiments/wallet-mv3/native-build.patch whitespace=-blank-at-eol
+experiments/wallet-mv3/native-core.patch whitespace=-blank-at-eol
+experiments/wallet-mv3/native-wallet.patch whitespace=-blank-at-eol

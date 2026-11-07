@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Wallet development prototype",
+  "version": "0.1.0",
+  "description": "Unpublished stagenet wallet development build.",
+  "action": { "default_popup": "popup.html" },
+  "permissions": ["unlimitedStorage"],
+  "optional_host_permissions": ["https://*/*", "http://127.0.0.1/*", "http://localhost/*"],
+  "content_security_policy": {
+    "extension_pages": "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; worker-src 'self'; connect-src https: http://127.0.0.1:* http://localhost:*; object-src 'none'; base-uri 'none'; form-action 'none'"
+  }
+}

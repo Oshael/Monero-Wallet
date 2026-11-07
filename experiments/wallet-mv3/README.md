@@ -92,23 +92,58 @@ The loopback RPC fixture passed JSON response handling, binary request and respo
 
 ## Native source rebuild
 
-Run [the native build script](build-native-wasm.sh) inside a fresh Linux VM with no host project mounts. It builds the pinned C++ sources, captures the linker map and stages `monero.js` in the VM. The native compiler follows the upstream Emscripten `3.1.66` baseline. This version's bundled Node `18.20.3` is used only for the isolated toolchain and postprocessing. A maintained release toolchain remains a separate review item. [Upstream CI recipe](https://github.com/woodser/monero-ts/blob/f6569ca616c4723645a7bfae3a843a0358f5fca9/.github/workflows/ci.yml#L52)
+The current recipe and JavaScript patch target Emscripten 6.0.13. The earlier
+3.1.66 results below are historical evidence, not the current shipped artifact.
+See [current wallet development](../../docs/WALLET_DEVELOPMENT.md) for the matched
+native patches, public ESM client and required notice generation.
+
+### Current maintained-toolchain result
+
+An incremental build and a clean build from the pinned source trees both produced
+native glue SHA-256 `9bb13c472522c1b46976a104769816e99bdfb98ed91e0f9f03d24ec11a5a5083`.
+The embedded WASM SHA-256 is
+`449a42d7773cc8f1f19fe4430fe1f480d2a1cf278f67da12d504eff59659d232`;
+the classic worker is `7999ced4c6da4512c54d9981ace29312e6b00ba43c1036d22037f43fd2bd4e39`.
+The final source-map comparison found 62 JavaScript package roots and no matches
+with the 26 advisories in the full development dependency graph. Full license
+texts for those packages and 19 native notices are generated beside the engine.
+This does not audit the fork, native parsers or build tools. Cache compatibility,
+entropy, CLI recovery, request budgets and funded regtest contracts passed; live
+stagenet and large-history client measurements remain separate pending work.
+
+Run [the native build script](build-native-wasm.sh) inside a prepared, isolated
+Linux build environment. It builds pinned C++ sources, captures the linker map
+and stages `monero.js`. The current compiler is Emscripten `6.0.13` with its bundled
+Node `24.19.0`, used only inside the build environment. The historical upstream
+baseline was Emscripten `3.1.66` with Node `18.20.3`.
+[Upstream baseline](https://github.com/woodser/monero-ts/blob/f6569ca616c4723645a7bfae3a843a0358f5fca9/.github/workflows/ci.yml#L52)
 
 In the guest, install the packages in the upstream `dist` job and add `git`, `curl`, `ca-certificates` and `xz-utils`. Prepare this directory structure under `~/monero-gate-a`:
 
 - `monero-ts/` contains the upstream `f6569ca616c4723645a7bfae3a843a0358f5fca9` checkout with its recursive submodules initialized at their recorded revisions.
-- `emsdk/` contains SDK source `a72a42afc3700174023ade6bf83aa79892bb783c` with `./emsdk install 3.1.66` and `./emsdk activate 3.1.66` completed.
+- `emsdk/` contains SDK source `35659964bc2762fffec0d257997fb61475f765b7` with `./emsdk install 6.0.13` and `./emsdk activate 6.0.13` completed.
 - `inputs/` contains `boost_1_83_0.tar.gz`, `unbound-1.22.0.tar.gz` and `openssl-3.5.9.tar.gz`. The script checks their SHA-256 values before extraction. [Boost archive metadata](https://archives.boost.io/release/1.83.0/source/boost_1_83_0.tar.gz.json) · [Unbound releases](https://www.nlnetlabs.nl/projects/unbound/download/) · [OpenSSL 3.5.9](https://github.com/openssl/openssl/releases/tag/openssl-3.5.9)
 
-Run `bash build-native-wasm.sh` in the guest. The script generates OpenSSL 3.5.9 headers and leaves the upstream WASM target's OpenSSL link entries disabled. It does not invoke the upstream OpenSSL 1.1.1q build script. It saves the native link map as `~/monero-gate-a/wasm-link.map`.
+Apply the three patches to their owning repositories as shown by
+`prepare-native-wasm.sh`, then run `bash build-native-wasm.sh` in the isolated
+environment. The script generates OpenSSL 3.5.9 headers and leaves the WASM
+target's OpenSSL link entries disabled. It does not invoke the upstream OpenSSL
+1.1.1q build script. It saves the link map as `~/monero-gate-a/wasm-link.map`.
 
 Copy the staged `monero.js` out of the guest. In a staging tree with the worker patch applied, replace `source/dist/monero.js`, run `npm run build_web_worker` and pass the SHA-256 from the native build to `node verify-worker.mjs source <native-glue-sha256>`. The verifier checks that the worker contains the same WASM bytes as that artifact. Use the recovery and loopback fixtures above with the resulting worker. Secure persistence and real node synchronization require separate evidence.
 
 ### Remote container build
 
-The [native Dockerfile](Dockerfile.native) installs its toolchain prerequisites inside an Ubuntu container. The [preparation script](prepare-native-wasm.sh) fetches pinned source revisions and size-bounded archives, then runs the native build. The Docker context allowlist includes only the build recipe and these scripts.
+The [native Dockerfile](Dockerfile.native) installs prerequisites inside an Ubuntu
+container. The [preparation script](prepare-native-wasm.sh) fetches pinned source
+revisions, patches and size-bounded archives, then runs the native build. The
+Docker context allowlist includes only the recipe, patches and scripts.
 
-Build the image from `experiments/wallet-mv3`. Run it with a dedicated work directory mounted at `/root/monero-gate-a`, explicit CPU and memory limits and no published ports. Set `WALLET_BUILD_JOBS` from 1 to 4. The build downloads its dependencies through the container network. Record the source commit, image ID, resource limits, artifact hashes and relevant service health checks in ignored local operational records. Verify existing services and configuration fingerprints before and after the run.
+Build the image from `experiments/wallet-mv3`. Run it with a dedicated work
+directory at `/root/monero-gate-a` and no published ports. Follow the project's
+current owner-approved resource policy. Set compiler `WALLET_BUILD_JOBS` from
+1 to 4. Downloads use the container network. Record source commit, image ID,
+resource settings, hashes and preservation checks in ignored operational records.
 
 The owner interrupted the Mac VM compile before it produced a final native artifact and moved this work to the VPS. Source synchronization authorizes this isolated experiment. Deployment remains a separate delivery step.
 
@@ -116,12 +151,12 @@ The owner interrupted the Mac VM compile before it produced a final native artif
 
 The native compile from source commit `43052c3f6b40d977fb29e4b628939c584e3633be` completed in the isolated Linux container. Its inputs were the pinned Monero sources, Emscripten `3.1.66`, Boost `1.83.0` and the verified archives above. The worker assembly passed TypeScript checking and used Node `24.18.1` with the project dependency patch. The native artifact differs from the previously published upstream artifact.
 
-| Artifact | SHA-256 |
-|---|---|
-| Generated `monero.js` glue | `8e3ad071c941ecf7ad84e1b7410d1909b715f39481f3f2febc6cf34555c8c5a0` |
-| Embedded WASM, 6,071,538 bytes | `46eb59a5b469d403193fb7b66ae0e2710140239d0bd0e72fffc939997f9b7a15` |
+| Artifact                                                    | SHA-256                                                            |
+| ----------------------------------------------------------- | ------------------------------------------------------------------ |
+| Generated `monero.js` glue                                  | `8e3ad071c941ecf7ad84e1b7410d1909b715f39481f3f2febc6cf34555c8c5a0` |
+| Embedded WASM, 6,071,538 bytes                              | `46eb59a5b469d403193fb7b66ae0e2710140239d0bd0e72fffc939997f9b7a15` |
 | Worker before browser transport correction, 3,214,926 bytes | `398a6bc8d6ca0700b660d0c98cdb90a42652c02a0df172dc466c2cd258648630` |
-| Worker with browser transport correction, 3,215,042 bytes | `f76140f4b3264ea4ebd17a001325b99b230b8c6322eb63aac322c5412b7a590b` |
+| Worker with browser transport correction, 3,215,042 bytes   | `f76140f4b3264ea4ebd17a001325b99b230b8c6322eb63aac322c5412b7a590b` |
 
 The worker verifier confirmed the embedded payload matches the native artifact, Axios is `1.21.0`, qs is `6.17.1` and the excluded Node crypto packages are absent from the source map. The native linker command and map contained no `libssl` or `libcrypto` references. The linker reported seven undefined symbols whose names also occur in the published upstream glue. A subsequent glue inventory found 13 aborting missing-function stubs in total, including those seven; see the remaining-path review below.
 
@@ -152,12 +187,12 @@ This proves the tested browser Digest transport and a one-block fake-chain walle
 
 The generated native glue contains 13 `abort("missing function: ...")` stubs. All 13 names also occur among the 14 stubs in the published glue. This comparison identifies inherited limitations; it does not establish that a missing function is unreachable. The seven linker diagnostics alone were an incomplete inventory.
 
-| Missing functions | Source investigation and remaining validation |
-|---|---|
+| Missing functions                                                                                     | Source investigation and remaining validation                                                                                                                                                                     |
+| ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `rx_seedheight`, `rx_slow_hash`, `v4_generate_JIT_code`, `Blockchain::get_pending_block_id_by_height` | Proof-of-work, RandomX/JIT and blockchain hashing references in the pinned native sources. RPC-payment mining also references slow hashing. Reachability from the proposed browser wallet API still needs review. |
-| `file_io_utils::load_file_to_string`, `file_io_utils::save_string_to_file` | Called by native wallet file helpers, including cache/key and file-export paths. Validate the browser's data-based export/reopen contract before designing persistent storage. |
-| `BIO_free`, `BIO_new_mem_buf`, `CRYPTO_free`, `PEM_read_bio`, `PEM_write` | OpenSSL-related stubs remain despite the absence of linked OpenSSL libraries. Native PEM file paths need review; generated headers and successful offline creation do not prove these paths work. |
-| `hw::trezor::register_all` | Hardware-device registration stub; compatibility with device paths is unverified. |
-| `tools::Notify::notify` | Native transaction-command notification path guarded by the optional notifier. Browser reachability and configuration need review. |
+| `file_io_utils::load_file_to_string`, `file_io_utils::save_string_to_file`                            | Called by native wallet file helpers, including cache/key and file-export paths. Validate the browser's data-based export/reopen contract before designing persistent storage.                                    |
+| `BIO_free`, `BIO_new_mem_buf`, `CRYPTO_free`, `PEM_read_bio`, `PEM_write`                             | OpenSSL-related stubs remain despite the absence of linked OpenSSL libraries. Native PEM file paths need review; generated headers and successful offline creation do not prove these paths work.                 |
+| `hw::trezor::register_all`                                                                            | Hardware-device registration stub; compatibility with device paths is unverified.                                                                                                                                 |
+| `tools::Notify::notify`                                                                               | Native transaction-command notification path guarded by the optional notifier. Browser reachability and configuration need review.                                                                                |
 
 The successful tests did not exercise these stubs. Engine adoption remains on hold until the required browser operations have a supported, validated path and the native dependency/license and release-toolchain reviews pass. No substitute cryptographic implementations or success-returning stubs were added.
