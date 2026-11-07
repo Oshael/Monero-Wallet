@@ -173,9 +173,10 @@ for fatal-worker locking, large prepared-send recovery, original encrypted v1
 backup migration and seed hiding on a visibility event. A newly created offline
 stagenet wallet reported restore height 2,226,704, below the observed network tip
 of 2,245,495; the suspected future-birthday condition was not reproduced.
-Headless Chromium reports
-both tabs as visible; actual physical-tab visibility remains a manual browser
-release check. CI uses pinned official actions and repeats `verify`; it has not run yet.
+Headless Chromium reports both tabs as visible; actual physical-tab visibility
+remains a manual browser release check. CI uses pinned official actions and
+repeats `verify` on main pushes and pull requests. Check the commit's workflow
+result before integration; a local pass does not establish CI success.
 
 ## Structural review
 
