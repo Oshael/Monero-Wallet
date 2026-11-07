@@ -58,7 +58,7 @@ The runner uses the private upstream worker message format in a test profile. It
 
 The upstream review found `0.11.22` at the npm `latest` tag. The upstream default branch at `df966246809259850056f7a26f84563c46f22e23` used the same dependency lock, browser bundler configuration and OpenSSL recipe as the release. The `fix_vulnerabilities` branch is an older `0.10.0` revision that still uses the affected Axios and elliptic versions and the old OpenSSL recipe. The open pull requests inspected did not address these findings. [Release](https://github.com/woodser/monero-ts/releases/tag/v0.11.22) · [Older security branch](https://github.com/woodser/monero-ts/commit/436174dcf6832df25295c1418cca5ee2b5bc1185) · [Pull requests](https://github.com/woodser/monero-ts/pulls)
 
-The [worker patch](worker-build.patch) pins `axios@1.21.0` and the URL shim's `qs@6.17.1`. It omits Node's crypto polyfill from the browser worker. That removes `elliptic`, `cipher-base`, `pbkdf2` and `sha.js` from the worker. The patch changes dependency resolution and Webpack configuration. It uses the same native WASM payload verified in the first probe. [Axios release](https://github.com/axios/axios/releases/tag/v1.21.0) · [qs changes](https://github.com/ljharb/qs/blob/v6.17.1/CHANGELOG.md)
+The [worker patch](worker-build.patch) pins `axios@1.21.0` and the URL shim's `qs@6.17.1`. It omits Node's crypto polyfill from the browser worker. That removes `elliptic`, `cipher-base`, `pbkdf2` and `sha.js` from the worker. The patch also selects the browser fetch transport with ambient credentials omitted, allowing the existing library to handle HTTP Digest challenges. Node's adapter selection and the upstream Digest calculation remain unchanged. The initial worker experiment used the published native payload; the native rebuild below replaces that payload. [Axios release](https://github.com/axios/axios/releases/tag/v1.21.0) · [qs changes](https://github.com/ljharb/qs/blob/v6.17.1/CHANGELOG.md)
 
 ### Reproduce the project build
 
@@ -84,9 +84,9 @@ For the independent recovery check, copy `manifest.json`, `probe.html`, `probe.m
 
 ### Verification boundary
 
-A clean reinstall and rebuild reproduced the 3,203,080-byte worker with SHA-256 `96edcc6a9de691b7c55df391704864e0aadad333b0aaca5c3b3a090040e4a384`. Type checking passed. Webpack emitted size warnings. The worker's embedded WASM matched the published payload byte for byte. The Chromium recovery and entropy checks passed again with the rebuilt worker and the official CLI.
+A clean reinstall and rebuild before the browser transport correction reproduced the 3,203,080-byte worker with SHA-256 `96edcc6a9de691b7c55df391704864e0aadad333b0aaca5c3b3a090040e4a384`. Type checking passed. Webpack emitted size warnings. The worker's embedded WASM matched the published payload byte for byte. The Chromium recovery and entropy checks passed again with the rebuilt worker and the official CLI.
 
-The loopback RPC fixture passed JSON response handling, binary request and response, and HTTP 503 handling. A separate HTTP Digest challenge timed out with both the upstream and project workers in headless Chromium. Authenticated RPC compatibility remains unverified.
+The loopback RPC fixture passed JSON response handling, binary request and response, and HTTP 503 handling. A separate HTTP Digest challenge initially timed out with both the upstream and project workers in headless Chromium. The authenticated daemon regression below records the diagnosis and corrected candidate.
 
 `npm audit signatures --omit=dev` passed for the declared production dependency graph. The full `npm audit` still reported 26 findings. Cross-checking the reported package paths against the candidate worker source map found no matches. This is a dependency scan and source map comparison. The build and test toolchain and the native code require separate review before adopting the candidate.
 
@@ -120,12 +120,44 @@ The native compile from source commit `43052c3f6b40d977fb29e4b628939c584e3633be`
 |---|---|
 | Generated `monero.js` glue | `8e3ad071c941ecf7ad84e1b7410d1909b715f39481f3f2febc6cf34555c8c5a0` |
 | Embedded WASM, 6,071,538 bytes | `46eb59a5b469d403193fb7b66ae0e2710140239d0bd0e72fffc939997f9b7a15` |
-| Assembled worker, 3,214,926 bytes | `398a6bc8d6ca0700b660d0c98cdb90a42652c02a0df172dc466c2cd258648630` |
+| Worker before browser transport correction, 3,214,926 bytes | `398a6bc8d6ca0700b660d0c98cdb90a42652c02a0df172dc466c2cd258648630` |
+| Worker with browser transport correction, 3,215,042 bytes | `f76140f4b3264ea4ebd17a001325b99b230b8c6322eb63aac322c5412b7a590b` |
 
-The worker verifier confirmed the embedded payload matches the native artifact, Axios is `1.21.0`, qs is `6.17.1` and the excluded Node crypto packages are absent from the source map. The native linker command and map contained no `libssl` or `libcrypto` references. The linker reported seven undefined symbols whose names also occur in the published upstream glue. Reaching those paths and their behavior still require investigation.
+The worker verifier confirmed the embedded payload matches the native artifact, Axios is `1.21.0`, qs is `6.17.1` and the excluded Node crypto packages are absent from the source map. The native linker command and map contained no `libssl` or `libcrypto` references. The linker reported seven undefined symbols whose names also occur in the published upstream glue. A subsequent glue inventory found 13 aborting missing-function stubs in total, including those seven; see the remaining-path review below.
 
 The existing recovery and RPC fixtures passed with Playwright `1.62.1`, Chromium `151.0.7922.34` and the signature-verified official Monero CLI `0.18.5.4`. They covered creation and same-engine restoration, independent CLI address recovery, modified mnemonic checksum rejection, browser entropy use and rejection on entropy failure, JSON, binary request/response and HTTP 503 handling. These tests used disposable stagenet wallets. The browser container ran as `pwuser` with its Chromium sandbox enabled and external networking disabled. Compare the image's actual UID and GID before assigning ownership of the test directory. The first launch used a mismatched UID and failed to load Playwright. The corrected launch completed with exit zero.
 
 Native, worker and browser stages completed with exit zero. The project builder was stopped after recording the artifacts. Configuration fingerprints matched the pre-build baseline and the previously running services and containers remained active. Operational evidence and image identifiers are kept in ignored local records.
 
-Only one native compilation was completed. Native byte-for-byte reproducibility, a maintained release toolchain, complete native license review, authenticated RPC, persistence, realistic synchronization, transfers and interruption recovery still require evidence.
+Only one native compilation was completed. Native byte-for-byte reproducibility, a maintained release toolchain, complete native license review, unresolved native paths, persistence, realistic synchronization, transfers and interruption recovery still require evidence.
+
+### Authenticated daemon regression
+
+The browser XHR adapter stalled on the HTTP 401 Digest challenge. A diagnostic browser profile with test-only HTTP credentials let the challenge complete and the existing library retry succeed. The project patch selects Axios's fetch adapter for browser requests and sets `withCredentials: false` on both the initial request and its Digest retry. Browser ambient authentication is omitted, and the library continues to construct its Digest Authorization header. No browser-level HTTP credentials are configured in the regression runner.
+
+The [daemon runner](check-wallet-daemon.cjs) starts the signature-verified official `monerod` `0.18.5.4` in offline regtest mode. Its RPC binds only to loopback and requires disposable test credentials. A separate MV3 profile allows connections only to that loopback origin. The runner owns daemon shutdown, worker termination and temporary profile/chain removal. Test credentials are fixed public fixtures and never used for a deployed service.
+
+The permanent runner failed with an `httpRequest` timeout on the worker before the correction and passed with the corrected worker. It observed HTTP 200 and daemon status `OK` for the correct password, HTTP 401 for a wrong password, an authenticated wallet connection and wallet/daemon height 1 after synchronization. JSON, binary and HTTP 503 fixtures also passed. Independent CLI recovery, mnemonic checksum rejection and both entropy checks passed with the corrected candidate. Type checking and the worker artifact verifier passed; the native WASM hash was unchanged. The complete patch applied cleanly to the pinned upstream source and matched all four tested input files.
+
+To reproduce, stage the project-built worker under `build_dir/source/dist/`. Extract `monerod` from the same verified official Linux release archive used for CLI recovery, place it at `build_dir/monerod` and make it executable. Run as an unprivileged user in a disposable container with external networking disabled, no published ports and explicit CPU, memory and process limits. The recorded run used two CPUs, 4 GiB memory, Playwright `1.62.1`, Chromium `151.0.7922.34` and its enabled sandbox. Check fixture ownership against the container user's actual UID/GID before running.
+
+```sh
+cp experiments/wallet-mv3/check-wallet-daemon.cjs "$build_dir/"
+node "$build_dir/check-wallet-daemon.cjs" /absolute/path/to/playwright /absolute/path/to/chromium
+```
+
+This proves the tested browser Digest transport and a one-block fake-chain wallet flow. Funded stagenet behavior, representative synchronization, proxies/TLS and other supported browser versions need their own validation. The runner uses the private upstream worker message format; public wallet API validation remains pending.
+
+### Remaining native paths
+
+The generated native glue contains 13 `abort("missing function: ...")` stubs. All 13 names also occur among the 14 stubs in the published glue. This comparison identifies inherited limitations; it does not establish that a missing function is unreachable. The seven linker diagnostics alone were an incomplete inventory.
+
+| Missing functions | Source investigation and remaining validation |
+|---|---|
+| `rx_seedheight`, `rx_slow_hash`, `v4_generate_JIT_code`, `Blockchain::get_pending_block_id_by_height` | Proof-of-work, RandomX/JIT and blockchain hashing references in the pinned native sources. RPC-payment mining also references slow hashing. Reachability from the proposed browser wallet API still needs review. |
+| `file_io_utils::load_file_to_string`, `file_io_utils::save_string_to_file` | Called by native wallet file helpers, including cache/key and file-export paths. Validate the browser's data-based export/reopen contract before designing persistent storage. |
+| `BIO_free`, `BIO_new_mem_buf`, `CRYPTO_free`, `PEM_read_bio`, `PEM_write` | OpenSSL-related stubs remain despite the absence of linked OpenSSL libraries. Native PEM file paths need review; generated headers and successful offline creation do not prove these paths work. |
+| `hw::trezor::register_all` | Hardware-device registration stub; compatibility with device paths is unverified. |
+| `tools::Notify::notify` | Native transaction-command notification path guarded by the optional notifier. Browser reachability and configuration need review. |
+
+The successful tests did not exercise these stubs. Engine adoption remains on hold until the required browser operations have a supported, validated path and the native dependency/license and release-toolchain reviews pass. No substitute cryptographic implementations or success-returning stubs were added.

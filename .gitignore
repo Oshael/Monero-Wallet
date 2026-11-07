@@ -15,3 +15,4 @@ experiments/wallet-mv3/rpc-run-*/
 experiments/wallet-mv3/source/
 experiments/wallet-mv3/extension/
 experiments/wallet-mv3/monero-wallet-cli
+experiments/wallet-mv3/monerod

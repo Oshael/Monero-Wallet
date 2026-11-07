@@ -602,3 +602,25 @@
 -module.exports = configMoneroWebWorker;
 \ No newline at end of file
 +module.exports = configMoneroWebWorker;
+--- a/src/main/ts/common/HttpClient.ts
++++ b/src/main/ts/common/HttpClient.ts
+@@ -281,7 +281,8 @@
+       cancelToken: cancelToken,
+       data: body,
+       transformResponse: res => res,
+-      adapter: GenUtils.isDeno() ? ['fetch'] : ['http', 'xhr', 'fetch']
++      withCredentials: GenUtils.isBrowser() ? false : undefined,
++      adapter: GenUtils.isDeno() || GenUtils.isBrowser() ? ['fetch'] : ['http', 'xhr', 'fetch']
+     }).catch(async (err) => {
+       if (err.response?.status === 401) {
+         let authHeader = err.response.headers['www-authenticate'].replace(/,\sDigest.*/, "");
+@@ -330,7 +331,8 @@
+           cancelToken: cancelToken,
+           data: body,
+           transformResponse: res => res,
+-          adapter: GenUtils.isDeno() ? ['fetch'] : ['http', 'xhr', 'fetch']
++          withCredentials: GenUtils.isBrowser() ? false : undefined,
++          adapter: GenUtils.isDeno() || GenUtils.isBrowser() ? ['fetch'] : ['http', 'xhr', 'fetch']
+         });
+ 
+         return finalResponse;
