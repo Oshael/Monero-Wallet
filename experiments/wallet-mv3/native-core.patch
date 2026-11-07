@@ -48,3 +48,48 @@ index f0c9b1a..0662c86 100644
    }
  
    template <class T>
+diff --git a/src/common/threadpool.cpp b/src/common/threadpool.cpp
+--- a/src/common/threadpool.cpp
++++ b/src/common/threadpool.cpp
+@@ -30,6 +30,19 @@
+ 
+ #include "cryptonote_config.h"
+ #include "common/util.h"
++
++#ifdef __EMSCRIPTEN__
++#include <emscripten/emscripten.h>
++
++namespace {
++void yield_browser_task_turn() {
++  static double last_yield = emscripten_get_now();
++  if (emscripten_get_now() - last_yield < 50) return;
++  emscripten_sleep(0);
++  last_yield = emscripten_get_now();
++}
++}
++#endif
+ 
+ static __thread int depth = 0;
+ static __thread bool is_leaf = false;
+@@ -94,6 +107,9 @@
+     f();
+     --depth;
+     is_leaf = false;
++#ifdef __EMSCRIPTEN__
++    yield_browser_task_turn();
++#endif
+   } else {
+     if (obj)
+       obj->inc();
+@@ -173,6 +189,11 @@
+ 
+     if (e.wo)
+       e.wo->dec();
++#ifdef __EMSCRIPTEN__
++    // Job state is restored and the queue mutex is unlocked. Long refresh
++    // preprocessing batches must let worker messages and stop timers run too.
++    yield_browser_task_turn();
++#endif
+     lock.lock();
+     active--;
+   }

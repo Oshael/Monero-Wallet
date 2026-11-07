@@ -18,6 +18,12 @@ extension storage from automatic eviction and relaxes browser quotas; it does no
 remove application payload limits, disk exhaustion handling or the need for
 independent seed and encrypted backups. It adds no remote storage or fee.
 
+The owner subsequently approved temporary use of Nodely's HTTPS stagenet node
+for disposable-wallet receipt and sending tests, after disclosure of IP and
+request-metadata exposure. This approval does not select a product default or
+permit sending wallet secrets. The own test node completed synchronization before
+that fallback was needed; live validation used the own node; the public fallback was not used.
+
 ## Module ownership
 
 - `src/vault`: authenticated envelope, password derivation, crypto-worker lifetime
@@ -101,6 +107,25 @@ detaching and replacing a block. Direct node-status requests bypass the native
 RPC proxy's cached height. Spending requires the wallet to match the known tip;
 cached transaction status is identified as stale until synchronization completes.
 
+Live receipt exposed a separate observer-initialization defect before any
+signature or broadcast. Native compact `export_outputs` intentionally omits
+RingCT masks; importing it into a new view-only wallet sets an identity mask.
+The native real-output check correctly rejected transaction construction. A
+regtest that spends a normally received output reproduced the same failure;
+the earlier coinbase-funded spending case did not cover it.
+
+The maintained TypeScript wrapper now exposes an optional
+`getData({ viewOnly: true })`, using the existing native view-only key serializer
+with the complete cache. Default exports remain unchanged. `TransactionSigner`
+owns that temporary observer, checks `isViewOnly()`, clears exported buffers and
+closes the observer after preparation. Its native opening password is passed
+from the engine's existing in-worker metadata through `WalletTransfers`.
+No vault format, native serialization format or cryptographic primitive changed.
+The corrected regtest passed receiving and spending the RingCT output, exact
+change, preserved observer state and rejection of spend-key retrieval. The
+original full wallet retained spend authority. This wrapper correction did not
+change the native WASM; the later scheduling correction below does.
+
 - Public API create/export/close/reopen passed with the independently built
   candidate. Address, account/subaddress labels and wrong-password rejection were
   checked after terminating the original worker. The disposable wallet's keys
@@ -134,9 +159,21 @@ cached transaction status is identified as stale until synchronization completes
   libsodium source files against official 1.0.18 and collect 19 native notices.
   The inherited stubs remain aborting. A fresh native build from clean pinned
   trees reproduced the final artifact byte for byte; independent review remains open.
-- An unpublished stagenet test daemon is syncing under the owner's authorization
-  to use available VPS resources until its tests finish.
-  Funded stagenet flows and representative client measurements remain pending.
+- The unpublished own stagenet test daemon completed synchronization at observed
+  height 2,245,716. The assembled extension synchronized the existing disposable
+  wallet in 10,016 ms, received the faucet's exact 0.5 sXMR as unlocked balance,
+  exported a funded encrypted checkpoint and reopened with the same balances.
+  The assembled UI then prepared 0.1 sXMR, recovered its prepared and signed
+  checkpoints, and broadcast the approved transaction. A test route forwarded
+  the real broadcast, then dropped its accepted response. Reopening preserved the
+  same unknown transaction; cancellation was rejected and retry sent identical
+  signed bytes. Separate settlement validation confirmed exactly 0.1 sXMR
+  received/unlocked, a 0.00003046 sXMR fee and 0.39996954 sXMR unlocked change.
+  Both confirmed encrypted checkpoints reopened with the same balances/hash.
+  This evidence spans explicit diagnosed phases: the broadcast runner's final
+  unlock assertion ran one poll before the sender's change unlocked; the
+  settlement runner waited for both wallets and passed. It is not reported as
+  one uninterrupted passing run.
 - The attempted historical-scan measurement against the still-syncing own node
   did not perform a scan. The native `monero_wallet_full::sync` checks
   `is_daemon_synced()` before calling `sync_aux`; observed wallet height remained
@@ -156,8 +193,57 @@ cached transaction status is identified as stale until synchronization completes
 The funded regtest runner exercises the native signer and transaction recovery
 codec directly. The UI recovery fixture uses deliberately invalid unsigned bytes
 that are never signed or relayed; it verifies large encrypted recovery,
-reconstructed review and cancellation after editing. Full assembled funded
-stagenet sending and representative client scan measurements are still pending.
+reconstructed review and cancellation after editing. The assembled funded
+stagenet phases above also exercise the actual UI, vault, own node and uncertain
+broadcast recovery. No second transaction is constructed to compensate for an
+unknown response.
+
+## Client measurements and interrupted scanning
+
+Measurements below used one physical 8 GiB RAM desktop, Chromium 156, no VM,
+an empty disposable stagenet wallet and the synchronized own node. HTTP traffic
+includes request/response headers and bodies. Memory is summed browser-process
+RSS sampled every second; shared pages can be counted more than once.
+
+| Workflow                                              | Elapsed   | Peak browser RSS | Response traffic                | Encrypted backup |
+| ----------------------------------------------------- | --------- | ---------------- | ------------------------------- | ---------------- |
+| Create, verify seed, connect, scan, export and reopen | 74,724 ms | 1,133,936 KiB    | 66,262,272 bytes / 390 requests | 54,676,280 bytes |
+| Restore from height 2,235,659 to 2,245,740            | 79,447 ms | 1,168,224 KiB    | 60,740,011 bytes / 372 requests | 54,675,978 bytes |
+
+The recent restore scanned 10,081 heights. It is a seed restore using a recent
+height, not a measured cache that literally spent weeks offline. These are
+initial datasets, not mainnet, many-output capacity or whole-system memory peaks.
+The recent and new-wallet runs precede the native scheduling correction below.
+
+Restoration from height zero exposed a worker response timeout near height
+366,000. Peak sampled RSS was about 1.06 GiB; the observed failure was a 30-second
+`view` command deadline, not established memory exhaustion. Native refresh
+preprocesses transaction batches before publishing progress. Yielding only in
+progress callbacks did not fix the reproduced timeout and was removed. The
+maintained core patch now yields to the browser between native pool jobs after
+their bookkeeping is restored and while the queue mutex is unlocked. It is
+Emscripten-only, checks a 50 ms elapsed budget and uses existing Asyncify support.
+It does not guarantee a 50 ms worst-case job, change cryptographic calculations,
+skip outputs or increase request/worker deadlines. Historical restoration and
+all affected engine contracts must pass with this artifact before closing this
+validation item. The clean and incremental builds produced identical glue
+`7e430a4bfe8f1523d522b43e3d7af5ee2225cac26991a628127eae811a07d180`;
+the matching worker embeds WASM
+`2948fb4751b53f592adb2bbf908a1c0ea942a7802ab0eaad4778e6fccb2db94f`.
+RPC, CLI/entropy, bidirectional cache compatibility, view-only authority,
+received-output spending, UI recovery and lifecycle contracts passed with this
+artifact. Read-only live settlement also reopened both confirmed wallets with
+exact balances and the original transaction hash. Historical restoration remains
+under measurement and is not included in that completed-contract claim.
+
+Interrupted-page and node-failure recovery passed on the own node. A stopped scan
+checkpoint reopened at the same height. Simulated inactivity and elapsed-resume
+visibility events terminated both workers; actual OS suspend remains a manual
+release check. A new regression reproduced a background native fatal exception
+being treated as an ordinary scan failure. `WalletSync` now retains that fatal
+result and `EngineRuntime` checks health before granting access to active state.
+The corrected test locked both workers and preserved the existing vault revision
+instead of checkpointing the failed native state; reopening remained possible.
 
 ## Quality gates
 
@@ -191,5 +277,13 @@ Test measurements own and dispose browser contexts, temporary profiles, CDP
 sessions and sampling timers. Infrastructure bridges and inventories remain in
 ignored operational files. Clean artifact generation removes stale test files;
 native/client notices and the noble-hashes license accompany the generated build.
+The temporary transaction observer owns its view-only keys/cache and closure;
+the signer clears exported buffers in `finally`. The opening password remains
+inside the engine worker and follows its lifetime. `WalletSync` owns its retained
+background fatal result; the runtime checks it before exposing active state.
+The native pool owns its cooperation clock, restores task bookkeeping before
+yielding and changes no non-Emscripten behavior. The discarded progress-listener
+and JavaScript-yield hypotheses are absent from the final implementation.
+
 The identical native builds used the same isolated build image and pinned SDK;
 this is not yet a cross-platform or independently audited release pipeline.

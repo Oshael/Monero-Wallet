@@ -31,6 +31,13 @@ node scripts/collect-native-notices.mjs /absolute/path/to/native-workspace "$PWD
 npm run build
 ```
 
+The wrapper patch also exposes native view-only key export through
+`getData({ viewOnly: true })`. Transaction preparation opens that key file with
+the complete cache so RingCT masks remain available. Compact `exportOutputs`
+cannot initialize this observer: that native format intentionally omits those
+masks. The transaction regression spends a received output as well as coinbase
+funding and checks that the observer cannot return a private spend key.
+
 The native workspace contains `monero-ts`, `emsdk`, extracted `openssl-3.5.9` and
 the verified `inputs` directory. The notice collector requires those actual
 build inputs. Preserve all generated license files alongside the client. The
@@ -48,12 +55,15 @@ nodes. No remote executable code or wallet backend is required.
 
 Use Playwright `1.62.1` with an unpacked-extension-capable Chromium executable.
 Place a copy of the assembled `dist/` at `test/browser/extension` in a disposable
-staging directory alongside `wallet-flow.cjs`, `client-metrics.cjs` and
-`fixture-budget.cjs` (do not create a tracked fixture artifact). Run the staged script:
+staging directory alongside `wallet-flow.cjs` (do not create a tracked fixture artifact). Run the staged script:
 
 ```sh
 node /absolute/path/to/staged/wallet-flow.cjs /absolute/path/to/playwright /absolute/path/to/chromium
 ```
+
+Build `build-pending-recovery.mjs`, copy its generated
+`pending-recovery-probe.js` beside the extension files and add a fixture-only
+`pending-probe.html`; the UI runner uses it to import a large prepared checkpoint.
 
 The runner owns temporary profiles, encrypted backup files and cleanup. It creates
 only disposable wallets, blocks external DNS and reports booleans. It verifies
@@ -69,6 +79,13 @@ that loopback origin in the fixture manifest. Pass the node's initial height and
 desired restore height to the runner. It counts request sizes and samples process
 RSS without logging keys or payloads. A trusted synthetic click every minute
 keeps this active-user measurement from invoking the normal inactivity lock.
+A failed historical scan retains its encrypted fixture profile and bounded run
+ledger under the staging directory's ignored `.local/`. After diagnosis, pass the
+explicit final `resume` argument to reopen that same profile. The runner refuses
+to replace an incomplete run silently and limits attempts; successful completion
+removes its disposable profile. Each segment has a 15-minute scan deadline.
+Keep the same absolute extension path so Chromium preserves the fixture origin.
+
 The node must be fully synchronized: the native wallet deliberately skips its
 scan while the daemon is behind. An empty restored seed does not represent a
 wallet with a large received-output history, and stagenet does not establish
@@ -81,6 +98,17 @@ official, signature-verified daemon with `daemon-fixture.cjs`, as documented in
 the native experiment. Its regtest uses mainnet address encoding but has no real
 mainnet connection or monetary value. It has fixed difficulty, local-only RPC and
 disposable credentials. It must never reuse a real wallet or live-chain database.
+
+`build-lifecycle-probe.mjs` and `check-lifecycle.cjs` exercise interrupted scans,
+node failure, simulated idle/resume locking and background native fatal handling.
+Stage their probe, `stagenet-browser.cjs` and `vault-revision.cjs` with a disposable
+extension whose manifest grants only the local node. `check-live-receipt.cjs`,
+`check-live-transfer.cjs` and `check-live-settlement.cjs` use explicitly staged
+disposable funded profiles. Keep addresses, credentials, backups and funding
+records ignored. The transfer runner guards against a second initial attempt;
+its explicit preparation/signed continuation modes inspect durable state before
+proceeding. A response-drop route retries only the same signed bytes. Settlement
+waits for both receipt and change to unlock. Never run these against real funds.
 
 ## Recovery and limitations
 

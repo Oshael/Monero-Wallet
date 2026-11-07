@@ -1,4 +1,4 @@
-import { createWalletFull, MoneroTxSet, MoneroUtils } from 'wallet-engine-client';
+import { openWalletFull, MoneroTxSet, MoneroUtils } from 'wallet-engine-client';
 import type { CandidateTransaction, CandidateWallet } from 'wallet-engine-client';
 import { WalletError } from '../domain/validation.ts';
 import type { NodeConnection } from '../domain/validation.ts';
@@ -7,40 +7,40 @@ import type { InspectedTransaction, SendIntent } from '../transactions/index.ts'
 
 export class TransactionSigner {
   readonly #wallet: CandidateWallet;
-  readonly #network: { networkType: 'stagenet' | 'mainnet'; regtest: boolean };
+  readonly #opening: {
+    networkType: 'stagenet' | 'mainnet';
+    regtest: boolean;
+    password: string;
+  };
 
   constructor(
     wallet: CandidateWallet,
-    network: { networkType: 'stagenet' | 'mainnet'; regtest: boolean } = {
-      networkType: 'stagenet',
-      regtest: false,
+    options: {
+      password: string;
+      networkType?: 'stagenet' | 'mainnet';
+      regtest?: boolean;
     },
   ) {
     this.#wallet = wallet;
-    this.#network = network;
+    this.#opening = {
+      networkType: options.networkType ?? 'stagenet',
+      regtest: options.regtest ?? false,
+      password: options.password,
+    };
   }
 
   async prepare(
     intent: SendIntent,
     node: NodeConnection,
   ): Promise<{ unsignedHex: string; fee: string }> {
-    if (!(await MoneroUtils.isValidAddress(intent.address, this.#network.networkType))) {
+    if (!(await MoneroUtils.isValidAddress(intent.address, this.#opening.networkType))) {
       throw new WalletError('invalid-address');
     }
-    const observer = await createWalletFull({
-      ...this.#network,
-      proxyToWorker: false,
-      primaryAddress: await this.#wallet.getPrimaryAddress(),
-      privateViewKey: await this.#wallet.getPrivateViewKey(),
-      server: node,
-      isTrustedDaemon: false,
-    });
+    const observer = await this.#observer(node);
     try {
       await observer.setDaemonConnection({ ...node }, false);
-      await observer.importOutputs(await this.#wallet.exportOutputs(true));
-      const keyImages = await this.#wallet.exportKeyImages(true);
-      await observer.importKeyImages(keyImages.getKeyImages(), keyImages.getOffset());
-      // Imported outputs retain their heights; unlock rules also require a current chain tip.
+      // Compact output exports omit RingCT masks. A native view-only keys/cache
+      // snapshot preserves the scanned outputs without granting spend authority.
       await observer.sync(await this.#wallet.getHeight());
       const transaction = await observer.createTx({
         accountIndex: 0,
@@ -55,6 +55,31 @@ export class TransactionSigner {
       return { unsignedHex, fee };
     } finally {
       await observer.close(false);
+    }
+  }
+
+  async #observer(node: NodeConnection): Promise<CandidateWallet> {
+    const [keys, cache] = await this.#wallet.getData({ viewOnly: true });
+    try {
+      if (!keys || !cache) throw new WalletError('observer-snapshot-failed');
+      const observer = await openWalletFull({
+        ...this.#opening,
+        proxyToWorker: false,
+        keysData: keys,
+        cacheData: cache,
+        server: node,
+        isTrustedDaemon: false,
+      });
+      try {
+        if (!(await observer.isViewOnly())) throw new WalletError('observer-has-spend-authority');
+        return observer;
+      } catch (error) {
+        await observer.close(false);
+        throw error;
+      }
+    } finally {
+      keys?.fill(0);
+      cache?.fill(0);
     }
   }
 

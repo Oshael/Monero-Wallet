@@ -434,8 +434,10 @@ supersedes the earlier persistence and toolchain pending items. Encrypted
 IndexedDB, backup/import, password rotation, worker locking and cold signing have
 passing contracts. A clean Emscripten 6.0.13 build reproduced the tested native
 artifact byte for byte. Funded regtest covered integrated addresses, exact receipt,
-approved fees and detached-confirmation recovery. Live-stagenet funded flows and
-representative synchronization measurements remain pending; none of this is a
+approved fees and detached-confirmation recovery. Assembled live-stagenet phases subsequently confirmed exact receipt, sending,
+fee/change and same-byte retry after a lost broadcast response. Initial desktop
+new-wallet and recent-restore measurements are recorded; historical restoration
+and representative mainnet/many-output capacity remain open. None of this is a
 public-release approval.
 
 **Engine adoption hold**
@@ -522,11 +524,19 @@ Egress tests are evidence for tested paths, not proof against every possible mal
 
 **Next action**
 
-Review native dependency licenses, the toolchain and all missing-function stubs using the compiled candidate. Validate the public wallet API, including data-based export/reopen and the required paths' reachability, before implementing encrypted persistence and representative node synchronization measurements. Keep swap execution paused until a route supports client-side verification, signing and recovery.
+Complete historical-restoration validation and representative capacity evidence
+using the maintained candidate, then define supported device/dataset budgets.
+Preserve the passing public API, funded sending and encrypted recovery contracts
+listed in the implementation record. Independent native/integration security
+review and public-release gates remain open. Keep swap execution paused until a
+route supports client-side verification, signing and recovery.
 
 ## 13. Source register
 
-Initial sources reviewed on 2026-11-06; client-side wallet documentation, remote-node boundaries and BasicSwap API authority rechecked on 2026-11-07. Specifications, provider terms and prices may change. Approved design requirements are recorded separately from unselected implementation proposals; no benchmark, security audit, executable quote comparison or provider integration has been completed. Protocol/DEX documentation and one public THORChain pool listing were inspected; an independent direct network probe was unavailable in this environment. Absence of a verified route is not proof that no implementation could ever support it.
+Initial sources reviewed on 2026-11-06; client-side wallet documentation, remote-node boundaries and BasicSwap API authority rechecked on 2026-11-07. Specifications, provider terms and prices may change. Approved design requirements are recorded separately from unselected implementation proposals; the initial research did not include a benchmark, security audit, executable
+quote comparison or provider integration. Subsequent wallet tests and measurements
+are recorded separately in the implementation record; no independent security
+audit or swap integration is claimed. Protocol/DEX documentation and one public THORChain pool listing were inspected; an independent direct network probe was unavailable in this environment. Absence of a verified route is not proof that no implementation could ever support it.
 
 - Monero node/remote-node architecture and privacy: https://docs.getmonero.org/interacting/remote-nodes/
 - Monero daemon configuration and RPC limits: https://docs.getmonero.org/interacting/monerod-reference/

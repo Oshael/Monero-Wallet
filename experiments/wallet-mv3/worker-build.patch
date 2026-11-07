@@ -677,3 +677,61 @@
      wasmModule.taskQueue = new ThreadPool(1);
      wasmModule.queueTask = async function(asyncFn) { return wasmModule.taskQueue.submit(asyncFn); }
      if (LibraryUtils.LOG_LEVEL > 0) wasmModule.set_log_level(LibraryUtils.LOG_LEVEL); // apply log level set before load
+--- a/src/main/ts/wallet/MoneroWalletFull.ts
++++ b/src/main/ts/wallet/MoneroWalletFull.ts
+@@ -1553,19 +1553,20 @@
+   /**
+    * Get the wallet's keys and cache data.
+    * 
++   * @param {{viewOnly?: boolean}} [options] can omit spend authority from exported keys
+    * @return {Promise<DataView[]>} is the keys and cache data, respectively
+    */
+-  async getData(): Promise<DataView[]> {
+-    if (this.getWalletProxy()) return this.getWalletProxy().getData();
+-    
+-    return this.module.queueTask(async () => {
+-      this.assertNotClosed();
+-      return this.getDataWasm();
+-    });
+-  }
+-
+-  protected getDataWasm(): DataView[] {
+-    let viewOnly = this.module.is_view_only(this.cppAddress);
++  async getData(options: {viewOnly?: boolean} = {}): Promise<DataView[]> {
++    if (this.getWalletProxy()) return this.getWalletProxy().getData(options);
++    
++    return this.module.queueTask(async () => {
++      this.assertNotClosed();
++      return this.getDataWasm(options.viewOnly);
++    });
++  }
++
++  protected getDataWasm(viewOnly: boolean = false): DataView[] {
++    viewOnly = viewOnly === true || this.module.is_view_only(this.cppAddress);
+ 
+     // store views in array
+     let views = [];
+@@ -2408,8 +2409,8 @@
+     return this.invokeWorker("submitMultisigTxHex", Array.from(arguments));
+   }
+   
+-  async getData() {
+-    return this.invokeWorker("getData");
++  async getData(options?: {viewOnly?: boolean}) {
++    return this.invokeWorker("getData", Array.from(arguments));
+   }
+   
+   async moveTo(path) {
+--- a/src/main/ts/common/MoneroWebWorker.ts
++++ b/src/main/ts/common/MoneroWebWorker.ts
+@@ -1002,8 +1002,8 @@
+   return self.WORKER_OBJECTS[walletId].submitMultisigTxHex(signedMultisigTxHex);
+ }
+ 
+-self.getData = async function(walletId) {
+-  return self.WORKER_OBJECTS[walletId].getData();
++self.getData = async function(walletId, options?: {viewOnly?: boolean}) {
++  return self.WORKER_OBJECTS[walletId].getData(options);
+ }
+ 
+ self.changePassword = async function(walletId, oldPassword, newPassword) {

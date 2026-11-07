@@ -172,7 +172,7 @@ export class EngineRuntime {
       address: await wallet.getPrimaryAddress(),
       state,
       sync: new WalletSync(wallet, state),
-      transfers: new WalletTransfers(wallet, pending),
+      transfers: new WalletTransfers(wallet, pending, settings.enginePassword),
     };
   }
 
@@ -243,6 +243,7 @@ export class EngineRuntime {
 
   #active(): UnlockedWallet {
     if (!this.#unlocked) throw new WalletError('wallet-locked');
+    this.#unlocked.sync.assertHealthy();
     return this.#unlocked;
   }
 

@@ -15,9 +15,9 @@ export class WalletTransfers {
   readonly #signer: TransactionSigner;
   readonly #journal: TransferJournal;
 
-  constructor(wallet: CandidateWallet, pending: PendingTransfer | null) {
+  constructor(wallet: CandidateWallet, pending: PendingTransfer | null, password: string) {
     this.#wallet = wallet;
-    this.#signer = new TransactionSigner(wallet);
+    this.#signer = new TransactionSigner(wallet, { password });
     this.#journal = new TransferJournal(pending);
   }
 

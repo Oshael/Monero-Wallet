@@ -72,6 +72,8 @@ async function main() {
       'accountsPreserved',
       'subaddressPreserved',
       'wrongPasswordRejected',
+      'viewOnlySnapshot',
+      'backwardSpendAuthority',
     ]) {
       assert.equal(result[contract], true, `Public wallet contract failed: ${contract}`);
     }

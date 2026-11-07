@@ -9,10 +9,7 @@ declare module 'wallet-engine-client' {
     getSeed(): Promise<string>;
     getPrivateViewKey(): Promise<string>;
     getPrivateSpendKey(): Promise<string>;
-    exportOutputs(all: boolean): Promise<string>;
-    importOutputs(outputs: string): Promise<number>;
-    exportKeyImages(all: boolean): Promise<{ getKeyImages(): unknown[]; getOffset(): number }>;
-    importKeyImages(images: unknown[], offset: number): Promise<unknown>;
+    isViewOnly(): Promise<boolean>;
     createTx(config: Record<string, unknown>): Promise<CandidateTransaction>;
     describeTxSet(set: CandidateTxSet): Promise<CandidateTxSet>;
     signTxs(unsignedHex: string): Promise<CandidateTxSet>;
@@ -26,7 +23,7 @@ declare module 'wallet-engine-client' {
     isDaemonSynced(): Promise<boolean>;
     getBalance(): Promise<bigint>;
     getUnlockedBalance(): Promise<bigint>;
-    getData(): Promise<Uint8Array<ArrayBuffer>[]>;
+    getData(options?: { viewOnly?: boolean }): Promise<Uint8Array<ArrayBuffer>[]>;
     createSubaddress(accountIndex: number, label: string): Promise<CandidateSubaddress>;
     getSubaddresses(accountIndex: number): Promise<CandidateSubaddress[]>;
     setDaemonConnection(connection: Record<string, unknown>, trusted: boolean): Promise<void>;

@@ -26,6 +26,10 @@ This identifies provenance; it is not a security audit or a dependency update.
 
 The native patches cover current compiler options, explicit browser globals,
 serialization compatibility and the existing descriptor's signed-set parser.
+The core pool also cooperatively yields between jobs only under Emscripten,
+using the already-enabled Asyncify runtime. This permits worker responses and
+scan-stop timers during preprocessing batches; protocol checks and transaction
+calculations are unchanged.
 The JavaScript patch bounds HTTP requests and converts/releases current
 Emscripten exception objects using its official runtime helpers. The latter
 requires the matching project-built WASM; do not combine this JavaScript patch

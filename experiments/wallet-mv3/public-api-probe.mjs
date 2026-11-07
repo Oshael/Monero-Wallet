@@ -49,6 +49,8 @@ globalThis.runPublicWalletProbe = async (
     const subaddresses = await wallet.getSubaddresses(0);
     const addressMatches = address === (await wallet.getPrimaryAddress());
     const [newKeys, newCache] = await wallet.getData();
+    phase = 'view-only-clone';
+    await assertViewOnlyClone(wallet);
     await wallet.close(false);
     wallet = undefined;
     await shutdown();
@@ -70,6 +72,8 @@ globalThis.runPublicWalletProbe = async (
       subaddressPreserved:
         subaddresses.length === 2 && subaddresses[1].getLabel() === 'Fixture subaddress',
       wrongPasswordRejected,
+      viewOnlySnapshot: true,
+      backwardSpendAuthority: !(await wallet.isViewOnly()),
     };
   } catch (error) {
     return { failedAt: phase, diagnostic: classifyFailure(error) };
@@ -81,6 +85,42 @@ globalThis.runPublicWalletProbe = async (
     }
   }
 };
+
+async function assertViewOnlyClone(wallet) {
+  const data = await wallet.getData({ viewOnly: true });
+  const [keysData, cacheData] = data;
+  let observer;
+  try {
+    observer = await openWalletFull({
+      networkType: 'stagenet',
+      password: 'disposable',
+      keysData,
+      cacheData,
+    });
+    if (!(await observer.isViewOnly()) || (await wallet.isViewOnly()))
+      throw new Error('View-only authority mismatch.');
+    await assertSpendKeyRejected(observer);
+    if ((await observer.getPrimaryAddress()) !== (await wallet.getPrimaryAddress()))
+      throw new Error('View-only address mismatch.');
+  } finally {
+    for (const bytes of data) bytes.fill(0);
+    await observer?.close(false);
+  }
+}
+
+async function assertSpendKeyRejected(wallet) {
+  try {
+    await wallet.getPrivateSpendKey();
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === 'The wallet is watch-only. Cannot retrieve spend key.'
+    )
+      return;
+    throw error;
+  }
+  throw new Error('View-only authority mismatch.');
+}
 
 function classifyFailure(error) {
   const message = error instanceof Error ? error.message : '';
@@ -100,6 +140,7 @@ function classifyFailure(error) {
     'buffer',
     'wallet file',
     'Aborted',
+    'View-only',
   ];
   const categories = known.filter((token) => message.includes(token));
   const property = message.match(/reading '([A-Za-z0-9_]{1,32})'/)?.[1];

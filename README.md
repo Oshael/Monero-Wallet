@@ -14,8 +14,11 @@ Creation, encrypted backup/import, password rotation, subaddresses and exclusive
 session locking passed in Chromium. A funded disposable-chain test passed local
 unsigned preparation, inspection before and after signing, relay, exact receipt,
 integrated addresses and recovery from a detached confirmation. CLI seed recovery
-and browser entropy checks passed. Funded live-stagenet validation, representative
-large-history measurements and independent security review remain open.
+and browser entropy checks passed. Assembled live-stagenet phases also confirmed
+receipt, sending and recovery of a lost broadcast response using the same signed
+transaction. Initial desktop new-wallet/recent-restore measurements are recorded.
+Historical restoration, mainnet-scale capacity and independent security review
+remain open; see the implementation record for exact datasets and limitations.
 
 Use an isolated build environment and preserve unrelated projects. Resource use
 must follow this project's current owner approvals. Infrastructure access details

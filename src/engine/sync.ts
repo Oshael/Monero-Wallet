@@ -27,6 +27,7 @@ export class WalletSync {
   readonly #state: NativeWalletState;
   #running: Promise<void> | undefined;
   #timer: ReturnType<typeof setTimeout> | undefined;
+  #fatal: WebAssembly.RuntimeError | undefined;
 
   constructor(wallet: CandidateWallet, state: NativeWalletState) {
     this.#wallet = wallet;
@@ -34,6 +35,7 @@ export class WalletSync {
   }
 
   start(): void {
+    this.assertHealthy();
     if (this.#running) throw new WalletError('sync-busy');
     this.#state.startScan();
     this.#running = this.#run().finally(() => {
@@ -41,13 +43,14 @@ export class WalletSync {
       this.#running = undefined;
     });
     this.#timer = setTimeout(() => {
-      void this.stop().catch(() => {
-        this.#state.failScan();
+      void this.stop().catch((error: unknown) => {
+        this.#failed(error);
       });
     }, 60_000);
   }
 
   async stop(): Promise<void> {
+    this.assertHealthy();
     clearTimeout(this.#timer);
     const running = this.#running;
     if (running) {
@@ -57,13 +60,22 @@ export class WalletSync {
     this.#state.stopScan();
   }
 
+  assertHealthy(): void {
+    if (this.#fatal) throw this.#fatal;
+  }
+
+  #failed(error: unknown): void {
+    if (error instanceof WebAssembly.RuntimeError) this.#fatal = error;
+    this.#state.failScan();
+  }
+
   async #run(): Promise<void> {
     try {
       if (!(await this.#state.canScan())) return;
       await this.#wallet.sync(new ProgressListener(this.#state));
       await this.#state.completeScan();
-    } catch {
-      this.#state.failScan();
+    } catch (error) {
+      this.#failed(error);
     }
   }
 }
