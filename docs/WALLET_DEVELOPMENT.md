@@ -12,6 +12,14 @@ npm run verify
 boundaries, Prettier and contract tests. CI repeats it. Generated engine artifacts
 are excluded from Git; application checks do not require them.
 
+## Architecture transition
+
+The owner selected VPS-side light scanning. The commands below build and test
+the existing full-scanning prototype; they do not enable light mode. Follow
+[the adoption record](LIGHT_WALLET_ADOPTION.md) before changing native wrappers,
+sharing a view key or provisioning persistent scanner storage. Never treat
+`set_light_wallet(true)` alone as subaddress-compatible integration.
+
 ## Native engine and extension artifact
 
 Follow the isolated [native recipe](../experiments/wallet-mv3/README.md#native-build-results).

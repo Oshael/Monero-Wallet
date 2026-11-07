@@ -1,8 +1,8 @@
 # Monero Browser Wallet — Architecture, Security and Delivery Plan
 
-Version: 0.7 — 2026-11-07
+Version: 0.8 — 2026-11-07
 
-Status: experimental local wallet implemented with Gate A/B evidence. Public engine adoption, representative chain-scale validation and independent security review remain open. DEX integration remains paused separately.
+Status: the owner selected VPS-side light-wallet scanning after the local-scanning prototype. Integration feasibility is in progress; the light model is not implemented or deployed. Public engine adoption, capacity validation and independent security review remain open. DEX integration remains paused separately.
 
 ## 1. Purpose and decision status
 
@@ -17,7 +17,7 @@ This is a separate product proposal. It is not an approved addition to 0xDMme an
 - No mandatory paid API subscriptions for development. Provider transaction costs are acceptable.
 - Charge an additional project fee on swaps.
 - Allocate part of collected fees to buying a separately launched Solana token.
-- The operator must never receive users' seed phrases or private wallet keys. Security is fundamental.
+- The operator must never receive users' seed phrases or private spend keys. The later light-wallet decision permits only private view keys at the project scanner, for transaction discovery. Security is fundamental.
 - Move representative client synchronization, restoration, memory, traffic and storage feasibility measurements into Gate A, before swap implementation.
 - Encrypt sensitive wallet caches and swap metadata at rest, not just the seed. Storage capacity must be measured; 10 MB is not an approved whole-wallet budget.
 - Minimize identity and cross-service correlation as far as technically feasible. No claim of guaranteed anonymity; network and external-protocol observations must be documented.
@@ -32,10 +32,30 @@ This is a separate product proposal. It is not an approved addition to 0xDMme an
 - Still open: per-order client/backend authorization (item 3). Do not use Monero keys or the seed as backend credentials.
 - No native companion application, remote user-wallet daemon, external watchtower, protocol replacement or additional user custody has been approved.
 
+### Owner architecture decision — light wallet, 2026-11-07
+
+After clarification of the local-scanning prototype's browser CPU, memory and
+historical-restoration costs, the owner selected a light-wallet model: move heavy
+scanning to the existing VPS. Seed generation, private spend keys, transaction
+validation, approval and signing remain on the user's device. Only the private
+view key and required scanning metadata may reach the project-owned scanner.
+The operator can consequently observe incoming transactions and associate them
+with the registered wallet. This supersedes the former view-key-local-only rule
+for that specific service, not for swap providers, analytics, support, general
+logs or arbitrary nodes. No additional custodian or third-party scanner was
+selected. See [the adoption record](docs/LIGHT_WALLET_ADOPTION.md).
+
+Existing encrypted local backups and pending signed/unknown transactions must
+remain recoverable. Do not silently migrate a wallet's view key to a service
+when importing an old backup; the chosen service and its privacy boundary must
+be explicit. Server-side sensitive state still requires encryption at rest.
+Retention, account deletion, encrypted server storage and public deployment
+remain separate unresolved implementation/delivery details. The model decision
+does not approve plaintext persistence, new fees or replacement cryptography.
+
 ### Recommendations, not yet approved implementation decisions
 
 - Desktop Chromium Manifest V3 first; additional browsers require their own compatibility testing.
-- Non-custodial client-side wallet engine with local scanning, using an operator-hosted remote node.
 - TypeScript for application code; existing Monero cryptography compiled to WebAssembly.
 - A small modular backend for provider integration and accounting; a separately controlled treasury execution process.
 - Protocol-supported, transparent project fee collection where compatible with the approved DEX-only/no-KYC route. Affiliate settlement is not assumed to exist in atomic-swap protocols.
@@ -47,10 +67,10 @@ The user fee rate, buyback allocation, fee basis and collection mechanism, DEX r
 
 This is the starting point for the project. Validate the architecture-defining uncertainties while building a reusable wallet core; do not wait for every swap decision before beginning independent wallet work. These two workstreams may progress independently, without reducing the intended product scope.
 
-1. **Build the local XMR wallet prototype.** Start with the relevant Gate A dependency/license and browser-runtime checks, then develop the minimal extension-owned wallet flow covered by Gate B: local creation, encrypted storage, backup, restore, synchronization, and receiving/sending stagenet XMR. Keep keys, private view keys, transaction validation and signing on the user's device. Measure synchronization time, memory, traffic, storage and interruption/restart behavior early, including the representative workloads already required by Gate A. Stagenet transfers demonstrate correctness, not mainnet-scale performance or production readiness. Deliver a reproducible prototype, its observed limitations and measured results; retain code that meets the project's quality and security requirements for the product.
+1. **Build the local XMR wallet prototype.** Start with the relevant Gate A dependency/license and browser-runtime checks, then develop the minimal extension-owned wallet flow covered by Gate B: local creation, encrypted storage, backup, restore, synchronization, and receiving/sending stagenet XMR. Keep seeds, private spend keys, transaction validation and signing on the user's device. Under the later light-wallet decision, transfer only the private view key to the chosen project scanner. Measure synchronization time, memory, traffic, storage and interruption/restart behavior early, including the representative workloads already required by Gate A. Stagenet transfers demonstrate correctness, not mainnet-scale performance or production readiness. Deliver a reproducible prototype, its observed limitations and measured results; retain code that meets the project's quality and security requirements for the product.
 2. **Investigate BasicSwap's separation of coordination and signing.** First inspect the current source and interfaces to establish where keys, signing authority, protocol state and refund actions live. Determine whether existing interfaces can support server-side offer/message coordination and monitoring while the user's device independently validates and authorizes all fund movements. Check external-signing support and required client-side proof/recovery behavior; do not assume these capabilities exist. If the code supports a credible path, make a narrow local feasibility experiment using test assets where the protocol supports them, covering an accepted operation, rejection of tampered server instructions, and recovery/interruption behavior. Mocks alone do not prove protocol compatibility. If the separation requires material protocol changes or a different runtime, document the gap and options before implementing that alternative.
 
-**Boundary:** our server may perform work for the swap, but must not hold user wallet keys, possess an unrestricted signing capability or cause the client to sign unchecked transactions. Run feasibility services in an isolated project-owned environment under the owner's authorization. Any dependency on a native companion, watchtower, additional custody or changed privacy policy remains subject to the existing approval boundaries.
+**Boundary:** our server may perform work for the swap, but must not hold user seeds/spend keys, possess an unrestricted signing capability or cause the client to sign unchecked transactions. Run feasibility services in an isolated project-owned environment under the owner's authorization. Any dependency on a native companion, watchtower, additional custody or changed privacy policy remains subject to the existing approval boundaries.
 
 **Completion evidence:** the wallet prototype and early measurements identify whether the chosen browser engine is viable; the BasicSwap investigation records a supported path with concrete evidence, a bounded unproven hypothesis, or a confirmed blocker. A blocker pauses the affected swap integration while independent wallet work can continue. Do not build the complete Relay composition, production swap interface, fee collection or treasury automation on an assumed BasicSwap integration. Continue through the applicable delivery gates rather than treating this first step as a public-release approval.
 
@@ -79,7 +99,8 @@ The previously named monero-javascript candidate now redirects upstream to moner
 flowchart TD
   U["Extension UI"] --> E["Local wallet engine"]
   E --> V["Encrypted local vault"]
-  E --> N["Restricted Monero node RPC"]
+  E --> W["Project light-wallet scanner: private view key"]
+  W --> N["Private Monero node RPC"]
   U --> B["Swap backend"]
   B --> P["Swap providers"]
   B --> L["Fee ledger"]
@@ -87,11 +108,19 @@ flowchart TD
   T --> S["Solana execution"]
 ```
 
-The diagram shows proposed software dependencies, not automatic transfers of user funds. The swap-provider boundary is subject to the DEX feasibility review: a local API controlling a wallet is not interchangeable with a hosted quotation API. User keys and intermediate funds must not move to our backend to make an integration easier.
+The diagram shows proposed software dependencies, not automatic transfers of user funds. The swap-provider boundary is subject to the DEX feasibility review: a local API controlling a wallet is not interchangeable with a hosted quotation API. User spending authority and intermediate funds must not move to our backend to make an integration easier. The approved private-view-key scanner is a separate, explicit boundary.
 
-### Local wallet creation does not require server-held keys
+### Local creation and server-side discovery
 
-The intended extension generates wallet entropy, the seed, private spend key and private view key on the user's device through the reviewed engine. It encrypts persistent secrets locally, scans node data locally and signs transactions locally. Seed creation does not require registering a wallet with our backend or disclosing keys to a node. The node supplies chain data and relays already signed transactions; it is not the user's wallet process. This preserves local key custody, although node operators can still observe network metadata as described in section 9.
+The extension generates wallet entropy, seed and keys on the user's device
+through the reviewed engine and encrypts its local state. The selected light
+scanner receives the private view key, scans chain data on the VPS and returns
+transaction data. The client validates spend candidates and the intended
+transaction, signs locally after approval and sends only the signed transaction
+for relay. The scanner never receives the seed or spend key. A newly imported
+historical wallet may still wait for server scanning; moving the work does not
+make unindexed history immediately available. The server learns receiving
+activity, as disclosed in the owner decision and section 9.
 
 Two distinct feasibility questions must remain separate: running the Monero wallet engine in Manifest V3, and running a selected cross-chain swap protocol with its additional keys, proofs, transactions and deadlines. A native-only swap implementation does not imply that a browser wallet needs server-generated or server-held seeds. Source/intermediate-chain signing must also remain under user control, whether through a reviewed local engine or an explicitly supported user-controlled signer. Neither an unverified browser port nor a companion application is implicitly approved.
 
@@ -99,20 +128,21 @@ Two distinct feasibility questions must remain separate: running the Monero wall
 
 - **Vault:** encrypted persistence, versioned format, password derivation, atomic updates and recovery-safe migrations.
 - **Wallet engine:** authoritative unlocked keys, scan state, transaction construction and signing. Expose narrow operations; never a generic key getter.
-- **Synchronization:** bounded fetching, checkpoints, reconnect, node selection and freshness status. Engine remains authoritative for wallet interpretation.
+- **Synchronization:** bounded light-server requests, client checkpoints, reconnect, explicit scanner selection and freshness status. The scanner discovers candidate activity; the client validates spendability and transaction intent.
 - **Transaction approval:** immutable transaction intent, recipient/amount/fee presentation, explicit consent and matching the signed transaction to that intent.
 - **Swap protocol adapter/verifier:** protocol-specific proof and funding-condition validation through reviewed libraries; prepares a verified operation for transaction approval. It cannot authorize signing, write vault internals or delegate its security decision to the quotation backend.
 - **Local swap session:** authoritative user-side lifecycle, validated intent, protocol secrets, checkpoint ordering, reconciliation and deadline handling. It uses the vault for encrypted persistence and chain-specific signers for approved operations; it owns session cancellation/disposal and prevents concurrent conflicting actions.
 - **Swap UI:** quote comparison, protocol identity, expiry, verified deposit instructions and session status. It cannot turn an unverified quote into a funded operation.
 - **UI:** rendering and transient user input only. Seed display/import is an exceptional, narrowly scoped flow.
 
-Use an extension-owned full tab for the first engine prototype, with a dedicated worker for expensive operations. Keep the popup a launcher/status view. Do not rely on an indefinitely running service worker or keep keys in persistent background storage to survive suspension. Closing the owning page should stop core-wallet work safely and lock the wallet. This is not an established safe lifecycle for active atomic swaps: resolve their separate refund/deadline obligations in section 7 before integration. Multiple windows require a single authoritative session/lock to prevent concurrent conflicting writes and spends.
+Use an extension-owned full tab for the first engine prototype, with a dedicated worker for expensive operations. Keep the popup a launcher/status view. Do not rely on an indefinitely running service worker or keep keys in persistent background storage to survive suspension. Closing the owning page should stop client work safely and lock the wallet. In the approved light model, the scanner may continue discovery with its registered view key; locking the client does not revoke that server access. This is not an established safe lifecycle for active atomic swaps: resolve their separate refund/deadline obligations in section 7 before integration. Multiple windows require a single authoritative session/lock to prevent concurrent conflicting writes and spends.
 
 Background synchronization or offscreen contexts are later options requiring platform-policy and lifecycle verification, not assumed permissions.
 
 ### Server ownership
 
-- **Node gateway:** exposes only necessary restricted daemon methods; never wallet-rpc holding user wallets.
+- **Light scanner:** stores the explicitly shared private view key and required receiving index in protected project storage, scans against the private node and supplies bounded untrusted results. It never holds spend keys or signing authority.
+- **Node gateway:** exposes only necessary restricted daemon methods to project services; never wallet-rpc with user spending authority.
 - **Provider adapters:** normalize capabilities, assets/networks, quotes, orders and statuses. No wallet secrets.
 - **Swap coordinator:** idempotent provider/order bookkeeping, expiry, public status reconciliation and refund tracking. Its status is advisory to the local session; it cannot authorize funding, override locally verified conditions or hold recovery secrets.
 - **Fee ledger:** immutable money events, settlements, reversals and allocation records.
@@ -124,11 +154,11 @@ Start with a modular monolith for the backend. Separate the node and treasury by
 ## 4. Non-negotiable security properties
 
 1. Seed generation uses a verified cryptographically secure random source through the reviewed wallet library. Never timestamps, Math.random, backend-generated entropy or custom seed algorithms.
-2. Seed, spend key and private view key remain local. They never enter HTTP payloads, logs, telemetry, analytics, crash reports, support forms, AI tools or provider APIs.
+2. Seed and private spend key remain local and never enter HTTP payloads, logs, telemetry, analytics, crash reports, support forms, AI tools or provider APIs. The private view key may be sent only to the explicitly chosen project light scanner under the owner decision; it remains secret everywhere else.
 3. Transaction signing happens locally after explicit approval. No backend endpoint or remote configuration can authorize spending.
 4. Persist secrets only inside an authenticated encrypted vault. Browser storage itself is not encryption.
 5. No operator password reset, seed recovery, escrow key, master key or hidden recovery mechanism.
-6. Private view keys are also secrets. Do not silently switch to a light-wallet server that scans with the user's view key.
+6. Private view keys are secrets. Disclose the selected light scanner and receiving-activity exposure before registration; never silently switch scanners or reuse the view key as generic backend/swap authorization.
 7. A backend outage must not erase or hold the wallet hostage. Recovery into a compatible independent wallet must be tested.
 8. Project fees and treasury assets are separate from user principal.
 9. Server messages, node responses, provider data and imported wallet files are untrusted inputs.
@@ -227,7 +257,7 @@ A node stores a shared chain, not one copy per user. RPC has no mandatory per-ca
 - Measure RPC p95/p99 latency by method, synchronization time, error rate, egress, CPU, memory and disk latency.
 - Establish acceptance budgets from measured supported-device behavior before beta.
 - Perform the initial client feasibility benchmark in Gate A, including an ordinary 8 GB RAM desktop/laptop, a new wallet, weeks of catch-up, and an old restore. Measure wall-clock time, peak memory, bytes transferred, cache size and close/reopen/sleep recovery. A stagenet happy path does not establish mainnet-scale performance. Gate D expands capacity and adversarial measurements after feasibility is established.
-- Let users choose a compatible alternate node; do not silently rotate through unknown operators and multiply metadata exposure.
+- Let users explicitly select a compatible alternate scanner; disclose that it receives the view key. A daemon RPC endpoint is not interchangeable with LWS. Never silently rotate operators.
 - If the primary node fails, show cached balance as stale and do not claim a transaction succeeded without evidence.
 
 Do not change other projects, shared services, dependencies, firewall rules or storage allocations merely because the VPS is powerful. Inventory and deployment need a scoped plan, preservation checks and rollback. No deployment is authorized by writing this document.
@@ -378,16 +408,17 @@ Publish aggregate policy and executed treasury transaction references without ex
 
 ## 9. Privacy, retention and incident response
 
-| Data                                       | Intended location                              | Policy                                                                                                                             |
-| ------------------------------------------ | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Seed/private keys/password                 | User device only                               | Never transmit or log; no operator recovery                                                                                        |
-| Encrypted vault and wallet cache           | Local extension storage                        | User-controlled deletion/export; no default cloud sync                                                                             |
-| Swap recovery journal and encrypted bundle | Local vault and user-controlled offline export | Secret recovery authority; never upload to backend/support; checkpoint and restore requirements in section 7                       |
-| Support diagnostics                        | User-reviewed minimized export                 | No wallet/protocol secrets, recovery bundle or authorization credentials; identifiers only when necessary and explicitly disclosed |
-| Provider credentials                       | Backend secret storage                         | Never shipped as confidential secrets in the extension                                                                             |
-| Order/destination/refund metadata          | Backend/provider as necessary                  | Minimize, restrict access, encrypt backups; retention duration must be approved                                                    |
-| IP/security access records                 | Gateway only as operationally necessary        | No default full RPC payload logs; short explicit retention                                                                         |
-| Accounting/treasury records                | Restricted ledger                              | Retention based on applicable obligations; aggregate public reporting                                                              |
+| Data                                        | Intended location                              | Policy                                                                                                                             |
+| ------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Seed/private spend key/vault password       | User device only                               | Never transmit or log; no operator recovery                                                                                        |
+| Encrypted vault and wallet cache            | Local extension storage                        | User-controlled deletion/export; no default cloud sync                                                                             |
+| Swap recovery journal and encrypted bundle  | Local vault and user-controlled offline export | Secret recovery authority; never upload to backend/support; checkpoint and restore requirements in section 7                       |
+| Light-scanner view keys and receiving index | Project scanner protected storage              | Encryption at rest; explicit registration; retention/deletion and backup policy pending; no general payload logs                   |
+| Support diagnostics                         | User-reviewed minimized export                 | No wallet/protocol secrets, recovery bundle or authorization credentials; identifiers only when necessary and explicitly disclosed |
+| Provider credentials                        | Backend secret storage                         | Never shipped as confidential secrets in the extension                                                                             |
+| Order/destination/refund metadata           | Backend/provider as necessary                  | Minimize, restrict access, encrypt backups; retention duration must be approved                                                    |
+| IP/security access records                  | Gateway only as operationally necessary        | No default full RPC payload logs; short explicit retention                                                                         |
+| Accounting/treasury records                 | Restricted ledger                              | Retention based on applicable obligations; aggregate public reporting                                                              |
 
 Retention durations and applicable accounting requirements are launch decisions, not an excuse for indefinite storage. Disabling application logs does not erase reverse-proxy, hosting or provider records.
 
@@ -509,7 +540,7 @@ Egress tests are evidence for tested paths, not proof against every possible mal
 | -------------------------------------- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | Product identity                       | Separate from 0xDMme                                                                  | Public name pending; source repository selected by owner                                                                   |
 | Engine and seed format                 | Maintained Core-derived WASM                                                          | Compatibility, provenance and recovery proof                                                                               |
-| Wallet architecture                    | Local scanning, no shared view key                                                    | Browser performance proof                                                                                                  |
+| Wallet architecture                    | Approved VPS-side light scanning; local spending authority                            | Browser signing/interaction budgets and server scanning capacity proof                                                     |
 | Browser support                        | Desktop Chromium first                                                                | Explicit support matrix                                                                                                    |
 | DEX route                              | Evaluate BasicSwap first; monitor browser/pool alternatives                           | DEX/no-KYC eligibility, native XMR, runtime, liquidity, licensing, timeouts and recovery; none selected                    |
 | Relay first leg                        | Owner proposal under investigation                                                    | Supported intersection, intermediate control, screening/retention, recovery, all-in cost and explicit route approval       |
@@ -524,8 +555,10 @@ Egress tests are evidence for tested paths, not proof against every possible mal
 
 **Next action**
 
-Complete historical-restoration validation and representative capacity evidence
-using the maintained candidate, then define supported device/dataset budgets.
+Verify the selected light scanner, compatible client-side signing, subaddresses,
+licensed inputs, encrypted server storage and user-controlled recovery. Establish
+server scanning and browser resource budgets for that model; the former full
+browser scan is historical evidence, not the selected product workflow.
 Preserve the passing public API, funded sending and encrypted recovery contracts
 listed in the implementation record. Independent native/integration security
 review and public-release gates remain open. Keep swap execution paused until a

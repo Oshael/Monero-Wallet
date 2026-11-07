@@ -24,6 +24,18 @@ request-metadata exposure. This approval does not select a product default or
 permit sending wallet secrets. The own test node completed synchronization before
 that fallback was needed; live validation used the own node; the public fallback was not used.
 
+## Selected architecture update
+
+The owner subsequently selected VPS-side light-wallet scanning; see
+[the adoption decision](LIGHT_WALLET_ADOPTION.md). Private view keys may reach
+only the chosen project scanner. Seeds, spend keys and signing remain local.
+The tests and measurements below describe the prior full-scanning prototype;
+they do not establish light-client or LWS compatibility. The historical desktop
+scan stopped at its 15-minute fixture deadline after reaching height 700,301
+without the former worker timeout. Its unfinished encrypted test profile was
+preserved and its local bridge stopped; the full historical benchmark is not
+reported as complete or required as the new default browser workflow.
+
 ## Module ownership
 
 - `src/vault`: authenticated envelope, password derivation, crypto-worker lifetime

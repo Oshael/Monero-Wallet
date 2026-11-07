@@ -2,7 +2,10 @@
 
 This repository contains an unpublished Chromium Manifest V3 stagenet wallet,
 its architecture plan and feasibility experiments. Keys, scanning and signing
-stay in extension-owned workers; sensitive state is encrypted in IndexedDB.
+stay in extension-owned workers in the existing prototype; sensitive state is
+encrypted in IndexedDB. The owner has now selected VPS-side light scanning with
+local signing. [Adoption is in progress](docs/LIGHT_WALLET_ADOPTION.md); the code
+has not yet changed to that model.
 
 - [Architecture, security and delivery plan](MONERO_WALLET_PROJECT_PLAN.md)
 - [Manifest V3, recovery, entropy and worker build experiments](experiments/wallet-mv3/README.md)
