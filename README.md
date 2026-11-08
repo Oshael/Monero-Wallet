@@ -24,7 +24,11 @@ integrated addresses and recovery from a detached confirmation. CLI seed recover
 and browser entropy checks passed. Assembled live-stagenet phases also confirmed
 receipt, sending and recovery of a lost broadcast response using the same signed
 transaction. Initial desktop new-wallet/recent-restore measurements are recorded.
-Historical restoration, mainnet-scale capacity and independent security review
+The funded light-wallet flow also passed temporary HTTPS, round-trip confirmation
+and unlocking, encrypted recovery and authenticated scanner deletion. Reusable
+development fixtures now declare a verified recent scan start instead of
+repeating genesis scans for ordinary tests.
+Broader wallet histories, mainnet-scale capacity and independent security review
 remain open; see the implementation record for exact datasets and limitations.
 
 Use an isolated build environment and preserve unrelated projects. Resource use

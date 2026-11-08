@@ -155,8 +155,24 @@ keys-only outgoing recovery, exact fee/change and detached-confirmation input
 reservation. The path prefix belongs to the
 native connection instance; no global mutable routing state, UI rule, dependency,
 crypto change, new secret accessor or persistence format was added. This fixes an
-existing transport responsibility. Live funded ngrok validation is still in progress
-and must not be inferred from these completed checks.
+existing transport responsibility. The subsequent funded stagenet ngrok run passed
+explicit selection, labelled subaddress receipt, local approval/signing,
+prepared/signed checkpoint reopening, loss of an accepted broadcast response and
+retry of the same signed bytes, a return payment, exact fee/change accounting,
+real confirmation/unlocking, independent funded-backup import and authenticated
+deletion. After a read-only synchronization action collided with background work,
+the test resumed its durable sender journal instead of creating another payment.
+The browser helper now waits with bounded retries only for rejected busy sync
+requests. It does not retry signing or create replacement transfers.
+
+Scanner registrations were absent after deletion, the temporary tunnel and test
+processes stopped, the approved VPS tmpfs credential was removed, the prior node
+was restored and preservation/backup checks passed. The encrypted storage volume
+remained closed. Known development fixtures now have separately declared recent
+starting heights; fresh-scanner recovery covered roughly 1,400–1,800 blocks in
+about 35 seconds per wallet while preserving the exact total balance. The
+original backups and production birthday rules are unchanged. See the
+[test iteration policy](WALLET_DEVELOPMENT.md#light-wallet-browser-contracts).
 
 The real offline-regtest LWS contract passed primary and subaddress receipt,
 including index 999; exact unlocked balance, fee and change; local unsigned

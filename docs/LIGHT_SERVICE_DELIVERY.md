@@ -157,6 +157,28 @@ routes remain blocked. No transaction was transmitted in that failed attempt.
 The browser test now treats the background-failure message as an immediate failure,
 instead of waiting on the last displayed synchronization state.
 
+After repeated Mac-to-VPS transport interruptions, the owner explicitly approved
+temporarily copying the existing ngrok authtoken into project-only VPS tmpfs.
+Host root and the disposable test container can read that copy; it must be removed
+when the fixture ends. The same ngrok agent version runs inside the isolated
+container, without changing the host's packages or global ngrok configuration.
+This approval covers only the development tunnel credential and does not change
+the wallet key boundary, authorize mainnet funds or activate a persistent service.
+
+The full funded stagenet HTTPS flow subsequently passed: labelled subaddress
+receipt, local inspection/approval/signing, prepared and signed checkpoint
+reopening, loss of an accepted relay response, same-signed-bytes retry, return
+payment, real confirmation/unlocking, exact fee/change, independent backup import
+and authenticated deletion. A fixture UI synchronization race was resumed from
+the durable sender journal; the payment was not replaced. Busy sync requests now
+have bounded fixture-only waits. This does not add an automatic money retry.
+
+After the run, the scanner held no live registrations. The temporary container
+and tunnel were stopped, the tmpfs authtoken copy was removed, the previous node
+was restored, configuration/service preservation checks passed and original
+encrypted-backup hashes still matched. The persistent encrypted volume remained
+closed. No persistent service or public release was activated.
+
 ## Public release gate
 
 Before persistent/public activation, review the integrated server/client source,

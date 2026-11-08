@@ -123,7 +123,7 @@ class StagenetBrowser {
   }
 
   async sync() {
-    await this.act('Synchronize');
+    await this.requestSync();
     const deadline = performance.now() + 15 * 60_000;
     while (performance.now() < deadline) {
       const state = await this.page.locator('#wallet-sync').textContent();
@@ -135,6 +135,18 @@ class StagenetBrowser {
       await this.page.mouse.click(5, 5);
     }
     throw new Error('Synchronization deadline.');
+  }
+
+  async requestSync() {
+    for (let attempt = 0; attempt < 15; attempt++) {
+      const response = await this.act(
+        'Synchronize',
+        /^(Done\.|Operation failed: (?:session-busy|sync-busy)\.)$/,
+      );
+      if (response === 'Done.') return;
+      await this.page.waitForTimeout(1000);
+    }
+    throw new Error('Background synchronization did not yield to the fixture.');
   }
 
   async balances() {

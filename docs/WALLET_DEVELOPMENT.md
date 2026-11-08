@@ -144,6 +144,31 @@ remaining delivery gates and independent human security review.
 
 ## Light-wallet browser contracts
 
+Use targeted unit/contract checks for ordinary edits and the isolated regtest for
+money, recovery and reorganization rules. A live-chain run is for the external
+contract being changed, not a default repetition of every wallet test. Keep its
+scanner/index alive across browser attempts and resume the last durable stage.
+After relay, inspect the existing journal and reuse its signed transaction;
+never restart a scenario by creating a replacement payment.
+
+Known project-generated development fixtures now have separate encrypted copies
+with an explicitly declared recent starting height. Their complete historical
+caches established the first confirmed receipts; the fixture declaration includes
+a 1,000-block margin before those receipts. Preparation checks the allowlisted
+fixture identity and historical anchor, and preserves native keys/cache byte for
+byte and every transfer-journal field. The original backups remain unchanged.
+The preparation tools, identity allowlist, encrypted inputs and execution evidence
+stay in ignored operational storage.
+
+This is a controlled test-data declaration, not an automatic birthday inference
+for imported user wallets. Production still preserves an imported backup's
+original starting height, including zero. Newly generated wallets already retain
+the native engine's conservative recent height. A genesis scan is reserved for
+historical-restoration coverage. Fresh-scanner recovery of the optimized funded
+fixtures scanned roughly 1,400–1,800 blocks in about 35 seconds per wallet,
+matched the exact current total balance and performed no browser block scan.
+The live payment test separately checks exact unlocking and recovery.
+
 `build-light-wallet-probe.mjs` builds the funded correctness and 1,000-receipt
 capacity probes. The capacity runner accepts an optional `inputs` argument
 (after the browser executable) for a 64-receipt isolation case. Both cases retain
