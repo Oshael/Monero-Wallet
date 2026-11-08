@@ -9,6 +9,7 @@ import type {
   TransferStatus,
 } from '../transactions/index.ts';
 import { TransactionSigner } from './transaction-signer.ts';
+import type { PreparationCheckpoint } from './transaction-signer.ts';
 
 export class WalletTransfers {
   readonly #wallet: CandidateWallet;
@@ -29,9 +30,13 @@ export class WalletTransfers {
     return this.#journal.view();
   }
 
-  async prepare(intent: SendIntent, node: NodeConnection): Promise<SendPreview> {
+  async prepare(
+    intent: SendIntent,
+    node: NodeConnection,
+    source: PreparationCheckpoint = { kind: 'full' },
+  ): Promise<SendPreview> {
     this.#journal.assertCanPrepare();
-    const created = await this.#signer.prepare(intent, node);
+    const created = await this.#signer.prepare(intent, node, source);
     const pending: PendingTransfer = {
       intent,
       ...created,
@@ -69,7 +74,10 @@ export class WalletTransfers {
   async reconcile(): Promise<void> {
     const pending = this.#journal.snapshot();
     if (!pending?.hash) return;
-    const transaction = await this.#wallet.getTx(pending.hash);
+    const [transaction] = await this.#wallet.getTxs({
+      hashes: [pending.hash],
+      transferQuery: { isIncoming: false },
+    });
     if (!transaction || transaction.getIsFailed()) {
       this.#journal.unobserved(pending.intent.id);
       return;

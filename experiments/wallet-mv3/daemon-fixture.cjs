@@ -23,7 +23,7 @@ async function waitForDaemon(daemon, origin) {
   throw new Error('The disposable daemon did not become available within the startup budget.');
 }
 
-async function startDaemon(run) {
+async function startDaemon(run, zmq = false) {
   const executable = path.join(__dirname, 'monerod');
   await fs.access(executable, constants.X_OK);
   const daemon = spawn(
@@ -34,7 +34,7 @@ async function startDaemon(run) {
       '1',
       '--offline',
       '--no-igd',
-      '--no-zmq',
+      ...(zmq ? ['--zmq-rpc-bind-ip', '127.0.0.1', '--zmq-rpc-bind-port', '18082'] : ['--no-zmq']),
       '--hide-my-port',
       '--non-interactive',
       '--rpc-bind-ip',
@@ -75,7 +75,7 @@ async function runDaemonFixture(options) {
   let daemon;
   let context;
   try {
-    daemon = await startDaemon(run);
+    daemon = await startDaemon(run, options.zmq);
     await waitForDaemon(daemon, origin);
     const extension = path.join(run, 'extension');
     await fs.mkdir(extension);
@@ -98,7 +98,7 @@ async function runDaemonFixture(options) {
         version: '0.1.0',
         host_permissions: ['http://127.0.0.1/*'],
         content_security_policy: {
-          extension_pages: `default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src ${origin}; object-src 'none'`,
+          extension_pages: `default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src ${[origin, ...(options.connectOrigins ?? [])].join(' ')}; object-src 'none'`,
         },
       }),
     );

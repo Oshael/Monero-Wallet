@@ -16,6 +16,8 @@ RUN apt-get update \
 
 COPY prepare-native-wasm.sh build-native-wasm.sh /opt/wallet-build/
 COPY native-build.patch native-core.patch native-wallet.patch /opt/wallet-build/
+COPY native-light-build.patch native-light-core.patch native-light-wallet.patch /opt/wallet-build/
+COPY light-wallet/ /opt/wallet-build/light-wallet/
 
 WORKDIR /root/monero-gate-a
 

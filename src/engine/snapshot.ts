@@ -6,6 +6,8 @@ import {
   decodeTransferRecovery,
 } from '../transactions/index.ts';
 import type { PendingTransfer } from '../transactions/index.ts';
+import { lightWalletSettings } from './light-wallet/settings.ts';
+import type { LightWalletSettings } from './light-wallet/settings.ts';
 
 const MAXIMUM = 128 * 1024 * 1024;
 const LEGACY_HEADER = 16;
@@ -20,6 +22,7 @@ export interface EngineMetadata {
   enginePassword: string;
   node: NodeConnection | null;
   pending: PendingTransfer | null;
+  light?: LightWalletSettings;
 }
 
 export interface EngineSnapshot {
@@ -45,7 +48,8 @@ export function encodeSnapshot(snapshot: EngineSnapshot): ArrayBuffer {
       throw new WalletError('snapshot-too-large');
     const bytes = new Uint8Array(total);
     const header = new DataView(bytes.buffer);
-    header.setUint32(0, 2);
+    // Old clients must reject light caches rather than interpret them as full scans.
+    header.setUint32(0, snapshot.metadata.light === undefined ? 2 : 3);
     header.setUint32(4, metadata.byteLength);
     header.setUint32(8, snapshot.keys.byteLength);
     header.setUint32(12, snapshot.cache.byteLength);
@@ -69,10 +73,12 @@ export function decodeSnapshot(buffer: ArrayBuffer): EngineSnapshot {
       bytes.subarray(layout.headerLength, layout.keysOffset),
     ),
   );
-  if (layout.version === 2 && 'pending' in object(metadataValue))
+  if (layout.version !== 1 && 'pending' in object(metadataValue))
+    throw new WalletError('invalid-snapshot');
+  if ((layout.version === 3) !== 'light' in object(metadataValue))
     throw new WalletError('invalid-snapshot');
   const metadata = decodeMetadata(metadataValue);
-  if (layout.version === 2)
+  if (layout.version !== 1)
     metadata.pending = decodeTransferRecovery(bytes.subarray(layout.recoveryOffset));
   return {
     metadata,
@@ -94,7 +100,7 @@ function readLayout(buffer: ArrayBuffer): {
   const header = new DataView(buffer);
   const version = header.getUint32(0);
   const headerLength = version === 1 ? LEGACY_HEADER : FIXED_HEADER;
-  if (![1, 2].includes(version) || buffer.byteLength < headerLength)
+  if (![1, 2, 3].includes(version) || buffer.byteLength < headerLength)
     throw new WalletError('invalid-snapshot');
   const metaLength = header.getUint32(4);
   const keysLength = header.getUint32(8);
@@ -134,5 +140,6 @@ function decodeMetadata(value: unknown): EngineMetadata {
     enginePassword,
     node: data.node === null ? null : nodeConnection(data.node),
     pending: data.pending === undefined ? null : pendingTransfer(data.pending),
+    ...(data.light === undefined ? {} : { light: lightWalletSettings(data.light) }),
   };
 }

@@ -29,12 +29,89 @@ that fallback was needed; live validation used the own node; the public fallback
 The owner subsequently selected VPS-side light-wallet scanning; see
 [the adoption decision](LIGHT_WALLET_ADOPTION.md). Private view keys may reach
 only the chosen project scanner. Seeds, spend keys and signing remain local.
-The tests and measurements below describe the prior full-scanning prototype;
-they do not establish light-client or LWS compatibility. The historical desktop
+The historical tests and measurements below describe the prior full-scanning
+prototype. The separate light-client results are recorded here and in the
+adoption record. The historical desktop
 scan stopped at its 15-minute fixture deadline after reaching height 700,301
 without the former worker timeout. Its unfinished encrypted test profile was
 preserved and its local bridge stopped; the full historical benchmark is not
 reported as complete or required as the new default browser workflow.
+
+## Light-client validation
+
+The maintained adapter uses the existing Monero cryptographic routines and
+keeps the legacy light-wallet flag disabled. Native coin selection, decoy
+selection, unsigned/signed inspection and relay remain the existing paths.
+Light preparation opens a native view-only cache and restores its verified
+height without downloading blocks for a local chain scan.
+
+The final native source compiled cleanly in a second checkout and reproduced
+the incremental artifact byte for byte:
+
+| Artifact                | SHA-256                                                            |
+| ----------------------- | ------------------------------------------------------------------ |
+| Native glue             | `eb32adc09ec0c6c1c9596109b2d208a9a7425c781bd1371e1d9d41cfb75293ed` |
+| Embedded WASM           | `1909474c417a8b4e93e1f399e107dcb218dade28fab300e92ec532dd689e38ef` |
+| Matching classic worker | `d39fea4e8a33fa23972c3ecbf4c8fb64f122a93b0d6ad75e6c691665bfb1b9aa` |
+
+The worker is 8,159,017 bytes. The ESM source-map inventory retained the same
+62 dependency roots with no additions or removals. The generated client and
+native notices accompany the development build. This is not an independent
+security audit or an approved public release.
+
+The real offline-regtest LWS contract passed primary and subaddress receipt,
+including index 999; exact unlocked balance, fee and change; local unsigned
+preparation and signing; confirmation and native cache recovery; same signed
+bytes after reordered output data; keys-only recovery of a confirmed send;
+stale-data input reservation and real detached-confirmation recovery; atomic rejection
+of malformed ownership/commitment/global-index data and omitted known receipts;
+legacy pool-receipt reconciliation without double credit; and secret egress canaries.
+The seed and spend key stayed absent from requests. The intentionally shared
+view key appeared only in selected scanner request bodies. The LWS fixture
+stored its state in tmpfs and exposed no public service.
+
+The assembled offline extension contract passed encrypted storage, seed
+verification/hiding, subaddress labels, independent backup import, password
+rotation, exclusive ownership, abrupt closure recovery, prepared-transfer
+review/cancellation and worker/native fatal locking. Typed lint, strict types,
+module boundaries, all 58 application/quality tests and the development build
+passed. Assembled live-stagenet validation subsequently imported the original encrypted
+backups into new disposable profiles, explicitly selected the scanner, preserved
+both exact balances and the confirmed send, and reopened encrypted light
+checkpoints. Scanner failure preserved balances; an injected native import fatal
+terminated both workers without advancing the vault revision. The original
+funded profiles and backups were preserved. The final native artifact also
+passed the existing full-wallet regtest signing/relay regression.
+
+The first paired-profile stagenet attempts timed out because the other profile
+was idle while one workflow ran. Checkpoint inspection showed successful light
+imports. The corrected runner owns bounded trusted user activity for both
+profiles and closes those timers before closing the browsers. Only the corrected
+assembled run is reported as passing.
+
+On an ordinary 8 GiB Mac, Chromium 156.0.8078.4 measured the final light client
+through temporary loopback SSH bridges to the project scanner/node. No VM or
+local daemon ran. Each scenario used a new disposable profile and ended by
+reopening its encrypted checkpoint; no local block/hash scan RPC was observed.
+
+| Scenario                    | Total elapsed | Sync step | Sampled peak browser RSS | RPC response bytes | Encrypted backup bytes |
+| --------------------------- | ------------- | --------- | ------------------------ | ------------------ | ---------------------- |
+| Newly created light wallet  | 46,690 ms     | 40,205 ms | 1,198,944 KiB            | 14,546             | 412,390                |
+| Restore funded light backup | 21,826 ms     | 10,106 ms | 1,532,528 KiB            | 29,442             | 54,688,176             |
+
+RSS sums browser processes and can count shared memory more than once; samples
+were taken once per second. SSH setup per connection and 30-second polling can
+dominate these timings. The funded backup retains its legacy cache and was not
+silently compacted. These small disposable stagenet histories are not a
+many-output or mainnet capacity claim. The scanner was already indexed for the
+funded account. The temporary bridges were stopped after measurement.
+
+The additional 1,000-receipt regtest passed native import and exact total/unlocked
+balances, but its many-input send failed during preparation. That capacity
+scenario is not reported as passing; a reduced-input diagnostic is in progress.
+No transaction was signed or broadcast in the failed phase. Existing funded
+correctness, recovery and assembled stagenet results above remain valid. Do not
+infer general many-output spending support or production capacity from them.
 
 ## Module ownership
 
@@ -48,6 +125,11 @@ reported as complete or required as the new default browser workflow.
   metadata and the transaction journal. Broadcast refreshes native local balances
   and marks them stale until another scan; reconciliation preserves a completed
   scan's freshness to avoid an immediate scan/reconciliation loop.
+  `WalletConnection` owns endpoint selection and the current synchronization
+  lifetime. `NodeConnectionOwner` publishes a selection only after native
+  configuration succeeds. The light client owns view-key-bearing transport,
+  registration and bounded response validation; `LightWalletSync` owns request
+  cancellation, progress and the matching native-cache checkpoint height.
 - `src/session`: session lifecycle, exclusive wallet ownership, lock/unlock and
   composition of engine checkpoints with the vault.
 - `src/transactions`: immutable user intents, local transaction inspection,
@@ -94,8 +176,10 @@ its own bounded recovery section, preserving the existing hex limits and total
 128 MiB payload cap. The transaction module owns recovery encoding/validation;
 the engine snapshot module owns framing and offsets. Version-1 snapshots remain
 readable, including a golden fixture produced by the original encoder before
-the migration. Subsequent checkpoints write version 2 atomically through the
-existing vault. AES envelope version/AAD, IndexedDB names/schema and passwords
+the migration. Full-scan checkpoints write version 2; explicitly selected light
+checkpoints use version 3 to prevent older clients from misreading their native
+cache. Both use the same bounded recovery section and atomic vault. AES envelope
+version/AAD, IndexedDB names/schema and passwords
 are unchanged; independently exported version-1 backups remain readable.
 
 Prepared recovery now exposes only its review tuple (destination, amount, fee,
@@ -299,3 +383,35 @@ and JavaScript-yield hypotheses are absent from the final implementation.
 
 The identical native builds used the same isolated build image and pinned SDK;
 this is not yet a cross-platform or independently audited release pipeline.
+
+## Light integration structural review
+
+The runtime remains a workflow coordinator. Endpoint selection and native node
+configuration moved into `WalletConnection` and `NodeConnectionOwner`, while
+`NativeWalletState` remains the sole owner of cached balances/freshness.
+`LightWalletSync` owns its scan promise, cancellation timer, retained fatal and
+checkpoint height. `LightWalletClient` owns short-lived view-key credentials,
+registration and transport; disposing it aborts pending requests. The snapshot
+module owns only framing/metadata and delegates transfer recovery to the
+transaction domain. The signer owns the temporary view-only observer and closes
+it after either full or light preparation. UI forms own consent and host
+permission requests and use only session operations.
+
+The native adapter owns staged output verification and atomic wallet-state
+replacement. It uses existing Monero primitives/parsers and bounded node RPC;
+all parse, ownership, chain-output and allocation checks precede state swaps.
+Stable transfer indexes preserve signed-set/key-image validation across reorders
+and forks. Old labels, explicit freeze state and unresolved local sends remain
+recoverable. Scanner-supplied totals never replace computed native balances.
+The final review found no new dependency cycles, persistence access from the
+engine, UI access to engine internals, shared application context or new npm
+dependencies. Operational inventories and evidence remain ignored.
+
+The preexisting session coordinator still composes vault/session/idle/send
+lifecycles. This change adds only its light-connection checkpoint operation and
+waiting-scanner polling behavior. Further session lifecycle extraction, if
+needed, should separate startup ownership first and polling ownership second,
+while preserving exclusive locks, abort/fatal handling and durable sends; the
+existing session, send-workflow and assembled lifecycle contracts are the
+required regression surface. That unrelated extraction is not necessary to
+establish the new scanner ownership boundary.

@@ -14,20 +14,27 @@ are excluded from Git; application checks do not require them.
 
 ## Architecture transition
 
-The owner selected VPS-side light scanning. The commands below build and test
-the existing full-scanning prototype; they do not enable light mode. Follow
-[the adoption record](LIGHT_WALLET_ADOPTION.md) before changing native wrappers,
-sharing a view key or provisioning persistent scanner storage. Never treat
-`set_light_wallet(true)` alone as subaddress-compatible integration.
+The owner selected VPS-side light scanning. The native recipe includes the
+project light-data adapter and matching client methods. The extension selects
+light mode only after an explicit scanner selection and view-key consent.
+Legacy snapshots remain readable and keep their existing scan mode until that
+selection. Follow [the adoption record](LIGHT_WALLET_ADOPTION.md) for the approved
+privacy scope, migration and unresolved persistent scanner storage decisions.
+Never treat `set_light_wallet(true)` alone as subaddress-compatible integration.
 
 ## Native engine and extension artifact
 
 Follow the isolated [native recipe](../experiments/wallet-mv3/README.md#native-build-results).
 The current recipe pins Emscripten 6.0.13 and applies `native-build.patch`,
 `native-core.patch` and `native-wallet.patch` to their respective repositories.
+The light-wallet experiment additionally applies the three `native-light-*.patch`
+files and copies `light-wallet/wallet_light_data.cpp` into the core source tree,
+as specified by the preparation script. The new importer does not enable the
+legacy light-wallet flag or replace native decoy selection.
 The downloaded native inputs and legal notices have fixed SHA-256 checks.
 
-In the prepared monero-ts checkout, apply `worker-build.patch` from this repository,
+In the prepared monero-ts checkout, apply `worker-build.patch` followed by
+`worker-light-build.patch` from this repository,
 install its patched lockfile with `npm ci --ignore-scripts`, and copy the independently
 built `monero.js` into that checkout's `dist/monero.js`. Do not use its published WASM
 with the current JavaScript exception bridge. Assemble the public ESM client:
@@ -134,3 +141,29 @@ fresh authenticated response from the selected node before preparing a spend;
 the node's assertions still do not constitute an independent network consensus
 proof. Production node/gateway protection and public money use require the
 remaining delivery gates and independent human security review.
+
+## Light-wallet browser contracts
+
+`build-light-wallet-probe.mjs` builds the funded correctness and 1,000-receipt
+capacity probes. Stage their generated modules with `light-wallet-fixture.cjs`,
+`light-server-fixture.cjs`, the corresponding `check-light-*.cjs`, vendor files,
+the matching classic worker, the signature-verified official daemon and the
+pinned LWS daemon. Use the disposable daemon fixture in an isolated network
+namespace, no host ports, a sandboxed Chromium and tmpfs scanner state. The
+correctness probe exercises real chain rollback and resubmits the same signed
+bytes; it must never target a live chain or reuse a real wallet.
+
+`check-light-stagenet.cjs` imports copies of the existing encrypted disposable
+backups into new profiles. It verifies explicit scanner selection, exact legacy
+balances/history, light backup recovery and scanner/native failures. The paired
+profiles use `active-fixture-user.cjs` to simulate an active user while waiting;
+that fixture owns and closes its activity timers. It does not change the
+application's inactivity policy. Keep funded profiles, backups and addresses
+ignored; do not request new faucet funding for this regression.
+
+`measure-light-client.cjs` measures creation and funded light-backup recovery on
+a desktop through explicit loopback endpoints. `rpc-traffic.cjs` records sizes,
+not payloads; the runner asserts that no block/hash scan RPC occurred. It samples
+RSS using `client-metrics.cjs` and removes its disposable profiles. Its encrypted
+input backup must already belong to the approved disposable test. Close the
+private bridges after the measurement.

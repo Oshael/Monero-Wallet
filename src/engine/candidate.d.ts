@@ -6,15 +6,19 @@ declare module 'wallet-engine-client' {
 
   export interface CandidateWallet {
     getPrimaryAddress(): Promise<string>;
+    getAddress(accountIndex: number, subaddressIndex: number): Promise<string>;
     getSeed(): Promise<string>;
     getPrivateViewKey(): Promise<string>;
     getPrivateSpendKey(): Promise<string>;
     isViewOnly(): Promise<boolean>;
+    importLightWalletData(json: string): Promise<void>;
+    restoreLightWalletHeight(height: number): Promise<void>;
     createTx(config: Record<string, unknown>): Promise<CandidateTransaction>;
     describeTxSet(set: CandidateTxSet): Promise<CandidateTxSet>;
     signTxs(unsignedHex: string): Promise<CandidateTxSet>;
     submitTxs(signedHex: string): Promise<string[]>;
     getTx(hash: string): Promise<CandidateTransaction | undefined>;
+    getTxs(query: Record<string, unknown>): Promise<CandidateTransaction[]>;
     getAddressIndex(address: string): Promise<unknown>;
     getHeight(): Promise<number>;
     getRestoreHeight(): Promise<number>;

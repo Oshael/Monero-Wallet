@@ -1,7 +1,37 @@
-import { createWalletFull, shutdown } from 'wallet-engine-client';
-import { encodeSnapshot } from '../../src/engine/snapshot.ts';
+import { createWalletFull, openWalletFull, shutdown } from 'wallet-engine-client';
+import type { CandidateWallet } from 'wallet-engine-client';
+import { encodeSnapshot, decodeSnapshot } from '../../src/engine/snapshot.ts';
 import { createIntent } from '../../src/transactions/index.ts';
 import { VaultCipher } from '../../src/vault/cipher.ts';
+import { Vault } from '../../src/vault/index.ts';
+
+export async function nativeBirthdayMatches(): Promise<boolean> {
+  const opened = await Vault.open('disposable browser wallet password');
+  let decoded;
+  let wallet: CandidateWallet | undefined;
+  try {
+    decoded = decodeSnapshot(opened.snapshot);
+    wallet = await openWalletFull({
+      networkType: decoded.metadata.network,
+      proxyToWorker: false,
+      password: decoded.metadata.enginePassword,
+      keysData: decoded.keys,
+      cacheData: decoded.cache,
+    });
+    const nativeHeight = await wallet.getRestoreHeight();
+    return nativeHeight > 0 && decoded.metadata.restoreHeight === nativeHeight;
+  } finally {
+    decoded?.keys.fill(0);
+    decoded?.cache.fill(0);
+    new Uint8Array(opened.snapshot).fill(0);
+    opened.vault.close();
+    try {
+      await wallet?.close(false);
+    } finally {
+      await shutdown();
+    }
+  }
+}
 
 export async function downloadPendingRecovery(): Promise<number> {
   const enginePassword = 'a'.repeat(64);

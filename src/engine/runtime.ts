@@ -1,24 +1,20 @@
 import { createWalletFull, openWalletFull } from 'wallet-engine-client';
 import type { CandidateWallet } from 'wallet-engine-client';
 import { WalletError } from '../domain/validation.ts';
-import type { NodeConnection } from '../domain/validation.ts';
 import type { WalletView } from '../domain/wallet-view.ts';
 import type { WorkerResult } from '../runtime/worker-host.ts';
-import { isTransferCommand } from './messages.ts';
-import type { EngineCommand, EngineReply, TransferCommand } from './messages.ts';
+import { isTransferCommand, isConnectionCommand } from './messages.ts';
+import type { EngineCommand, EngineReply, TransferCommand, ConnectionCommand } from './messages.ts';
 import { decodeSnapshot, encodeSnapshot } from './snapshot.ts';
 import type { EngineMetadata } from './snapshot.ts';
-import { WalletSync } from './sync.ts';
+import { WalletConnection } from './connection.ts';
 import { WalletTransfers } from './transfers.ts';
-import { readNodeStatus } from './node-status.ts';
-import { NativeWalletState } from './wallet-state.ts';
 
 interface UnlockedWallet {
   wallet: CandidateWallet;
-  metadata: Omit<EngineMetadata, 'pending'>;
+  metadata: Omit<EngineMetadata, 'pending' | 'node' | 'light'>;
   address: string;
-  state: NativeWalletState;
-  sync: WalletSync;
+  connection: WalletConnection;
   transfers: WalletTransfers;
 }
 
@@ -27,6 +23,7 @@ export class EngineRuntime {
 
   async execute(command: EngineCommand): Promise<WorkerResult<EngineReply>> {
     if (isTransferCommand(command)) return this.#transfer(command);
+    if (isConnectionCommand(command)) return this.#setConnection(command);
     switch (command.kind) {
       case 'create':
         return this.#create(command);
@@ -40,8 +37,6 @@ export class EngineRuntime {
         return { value: { kind: 'seed', seed: await this.#ready().wallet.getSeed() } };
       case 'verify-seed':
         return this.#verifySeed(command.seed);
-      case 'node':
-        return this.#setNode(command.node);
       case 'start-sync':
         return this.#startSync();
       default:
@@ -53,7 +48,7 @@ export class EngineRuntime {
     command: Extract<EngineCommand, { kind: 'addresses' | 'subaddress' | 'stop-sync' }>,
   ): Promise<WorkerResult<EngineReply>> {
     if (command.kind === 'stop-sync') {
-      await this.#active().sync.stop();
+      await this.#active().connection.stop();
       return this.#view();
     }
     return this.#addresses(command);
@@ -80,8 +75,8 @@ export class EngineRuntime {
         await active.transfers.reconcile();
         break;
     }
-    if (command.kind === 'broadcast-send') await active.state.afterBroadcast();
-    if (command.kind === 'reconcile-send') await active.state.refreshBalances();
+    if (command.kind === 'broadcast-send') await active.connection.state.afterBroadcast();
+    if (command.kind === 'reconcile-send') await active.connection.state.refreshBalances();
     return this.#view();
   }
 
@@ -89,22 +84,25 @@ export class EngineRuntime {
     command: Extract<TransferCommand, { kind: 'prepare-send' }>,
   ): Promise<WorkerResult<EngineReply>> {
     const active = this.#ready();
-    const node = active.metadata.node;
+    const node = active.connection.snapshot().node;
     if (!node || !active.metadata.backupVerified)
       throw new WalletError('verified-backup-and-node-required');
-    await active.state.assertSpendable();
+    await active.connection.state.assertSpendable();
     return {
       value: {
         kind: 'send-preview',
-        preview: await active.transfers.prepare(command.intent, node),
+        preview: await active.transfers.prepare(
+          command.intent,
+          node,
+          active.connection.preparation(),
+        ),
       },
     };
   }
 
   #startSync(): WorkerResult<EngineReply> {
     const unlocked = this.#ready();
-    if (!unlocked.metadata.node) throw new WalletError('node-required');
-    unlocked.sync.start();
+    unlocked.connection.start();
     return this.#view();
   }
 
@@ -131,7 +129,13 @@ export class EngineRuntime {
       password: metadata.enginePassword,
       ...restore,
     });
-    await this.#attach(wallet, metadata);
+    try {
+      if (!seed) metadata.restoreHeight = await wallet.getRestoreHeight();
+      await this.#attach(wallet, metadata);
+    } catch (error) {
+      await wallet.close(false);
+      throw error;
+    }
     return this.#view();
   }
 
@@ -150,8 +154,15 @@ export class EngineRuntime {
         cacheData: cache,
         ...server,
       });
-      await this.#attach(wallet, metadata);
-      if (metadata.node) await wallet.setDaemonConnection({ ...metadata.node }, false);
+      try {
+        if (metadata.light && metadata.light.height > 0) {
+          await wallet.restoreLightWalletHeight(metadata.light.height);
+        }
+        await this.#attach(wallet, metadata);
+      } catch (error) {
+        await wallet.close(false);
+        throw error;
+      }
       return this.#view();
     } finally {
       new Uint8Array(snapshot).fill(0);
@@ -161,29 +172,30 @@ export class EngineRuntime {
   }
 
   async #attach(wallet: CandidateWallet, metadata: EngineMetadata): Promise<void> {
-    const { pending, ...settings } = metadata;
-    const state = await NativeWalletState.create(wallet, () => {
-      if (!settings.node) throw new WalletError('node-required');
-      return readNodeStatus(settings.node, settings.network);
+    const { pending, node, light, ...settings } = metadata;
+    const connection = await WalletConnection.create(wallet, {
+      node,
+      ...(light === undefined ? {} : { light }),
+      network: settings.network,
+      restoreHeight: settings.restoreHeight,
     });
     this.#unlocked = {
       wallet,
       metadata: settings,
       address: await wallet.getPrimaryAddress(),
-      state,
-      sync: new WalletSync(wallet, state),
+      connection,
       transfers: new WalletTransfers(wallet, pending, settings.enginePassword),
     };
   }
 
   async #snapshot(): Promise<WorkerResult<EngineReply>> {
-    const { wallet, metadata, transfers } = this.#ready();
+    const { wallet, metadata, transfers, connection } = this.#ready();
     const data = await wallet.getData();
     const [keys, cache] = data;
     if (!keys || !cache) throw new WalletError('snapshot-failed');
     try {
       const snapshot = encodeSnapshot({
-        metadata: { ...metadata, pending: transfers.snapshot() },
+        metadata: { ...metadata, ...connection.snapshot(), pending: transfers.snapshot() },
         keys,
         cache,
       });
@@ -202,11 +214,10 @@ export class EngineRuntime {
     return this.#view();
   }
 
-  async #setNode(node: NodeConnection): Promise<WorkerResult<EngineReply>> {
+  async #setConnection(command: ConnectionCommand): Promise<WorkerResult<EngineReply>> {
     const active = this.#ready();
-    await active.wallet.setDaemonConnection({ ...node }, false);
-    active.metadata.node = node;
-    active.state.stopScan();
+    if (command.kind === 'node') await active.connection.selectNode(command.node);
+    else await active.connection.selectLight(command);
     return this.#view();
   }
 
@@ -234,7 +245,7 @@ export class EngineRuntime {
     const active = this.#active();
     const view: WalletView = {
       address: active.address,
-      ...active.state.view(),
+      ...active.connection.state.view(),
       backupVerified: active.metadata.backupVerified,
       pending: active.transfers.view(),
     };
@@ -243,13 +254,13 @@ export class EngineRuntime {
 
   #active(): UnlockedWallet {
     if (!this.#unlocked) throw new WalletError('wallet-locked');
-    this.#unlocked.sync.assertHealthy();
+    this.#unlocked.connection.assertHealthy();
     return this.#unlocked;
   }
 
   #ready(): UnlockedWallet {
     const active = this.#active();
-    if (active.state.status === 'syncing') throw new WalletError('sync-busy');
+    if (active.connection.state.status === 'syncing') throw new WalletError('sync-busy');
     return active;
   }
 }

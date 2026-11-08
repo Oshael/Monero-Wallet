@@ -87,6 +87,14 @@ export class WalletSession extends EventTarget {
     });
   }
 
+  async connectLight(connection: { uri: string; node: NodeConnection }): Promise<void> {
+    await this.#operation(async (active) => {
+      const view = await active.engine.connectLight(connection);
+      await this.#checkpoint(active);
+      this.#update(view);
+    });
+  }
+
   async addresses(label?: string): Promise<{ address: string; label: string }[]> {
     return this.#operation(async (active) => {
       const addresses = await active.engine.addresses(label);
@@ -290,7 +298,7 @@ export class WalletSession extends EventTarget {
     }
     await this.#operation(async () => {
       let view = await active.engine.view();
-      if (view.sync === 'waiting-node') {
+      if (view.sync === 'waiting-node' || view.sync === 'waiting-scanner') {
         this.#update(view);
         this.#continueSync(view);
         return;

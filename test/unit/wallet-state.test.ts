@@ -79,3 +79,16 @@ void test('a failed post-broadcast balance read leaves the prior numbers explici
   assert.equal(state.view().balance, '10');
   assert.equal(state.view().unlockedBalance, '7');
 });
+
+void test('light imports can recover a backwards node tip while spendability remains blocked', async () => {
+  const setup = fixture();
+  setup.values.walletHeight = 101;
+  setup.values.nodeHeight = 100;
+  const state = await setup.create();
+  state.startScan();
+  assert.equal(await state.canImportLightData(), true);
+  await assert.rejects(state.assertSpendable(), { code: 'synchronization-required' });
+  setup.values.ready = false;
+  assert.equal(await state.canImportLightData(), false);
+  assert.equal(state.status, 'waiting-node');
+});

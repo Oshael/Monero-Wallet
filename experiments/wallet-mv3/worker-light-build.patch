@@ -1,0 +1,72 @@
+diff --git a/src/main/ts/wallet/MoneroWalletFull.ts b/src/main/ts/wallet/MoneroWalletFull.ts
+--- a/src/main/ts/wallet/MoneroWalletFull.ts
++++ b/src/main/ts/wallet/MoneroWalletFull.ts
+@@ -1550,6 +1550,35 @@
+     });
+   }
+   
++  /** Import bounded LWS results; ownership and commitments are checked natively. */
++  async importLightWalletData(json: string): Promise<void> {
++    if (this.getWalletProxy()) return this.getWalletProxy().importLightWalletData(json);
++    return this.module.queueTask(async () => {
++      this.assertNotClosed();
++      return new Promise<void>((resolve, reject) => {
++        this.module.import_light_wallet_data(this.cppAddress, json, (error) => {
++          if (typeof error === "string") reject(new MoneroError(error));
++          else resolve();
++        });
++      });
++    });
++  }
++
++  /** Restore only the scan height accompanying a validated encrypted light cache. */
++  async restoreLightWalletHeight(height: number): Promise<void> {
++    if (!Number.isSafeInteger(height) || height <= 0 || height > 1000000000) throw new MoneroError("Invalid light wallet height");
++    if (this.getWalletProxy()) return this.getWalletProxy().restoreLightWalletHeight(height);
++    return this.module.queueTask(async () => {
++      this.assertNotClosed();
++      return new Promise<void>((resolve, reject) => {
++        this.module.restore_light_wallet_height(this.cppAddress, height, (error) => {
++          if (typeof error === "string") reject(new MoneroError(error));
++          else resolve();
++        });
++      });
++    });
++  }
++
+   /**
+    * Get the wallet's keys and cache data.
+    * 
+@@ -2409,6 +2438,14 @@
+     return this.invokeWorker("submitMultisigTxHex", Array.from(arguments));
+   }
+   
++  async importLightWalletData(json: string) {
++    return this.invokeWorker("importLightWalletData", Array.from(arguments));
++  }
++
++  async restoreLightWalletHeight(height: number) {
++    return this.invokeWorker("restoreLightWalletHeight", Array.from(arguments));
++  }
++
+   async getData(options?: {viewOnly?: boolean}) {
+     return this.invokeWorker("getData", Array.from(arguments));
+   }
+diff --git a/src/main/ts/common/MoneroWebWorker.ts b/src/main/ts/common/MoneroWebWorker.ts
+--- a/src/main/ts/common/MoneroWebWorker.ts
++++ b/src/main/ts/common/MoneroWebWorker.ts
+@@ -1002,6 +1002,14 @@
+   return self.WORKER_OBJECTS[walletId].submitMultisigTxHex(signedMultisigTxHex);
+ }
+ 
++self.importLightWalletData = async function(walletId, json: string) {
++  return self.WORKER_OBJECTS[walletId].importLightWalletData(json);
++}
++
++self.restoreLightWalletHeight = async function(walletId, height: number) {
++  return self.WORKER_OBJECTS[walletId].restoreLightWalletHeight(height);
++}
++
+ self.getData = async function(walletId, options?: {viewOnly?: boolean}) {
+   return self.WORKER_OBJECTS[walletId].getData(options);
+ }

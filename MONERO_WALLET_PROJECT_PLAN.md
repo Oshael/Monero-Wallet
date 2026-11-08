@@ -2,7 +2,7 @@
 
 Version: 0.8 — 2026-11-07
 
-Status: the owner selected VPS-side light-wallet scanning after the local-scanning prototype. Integration feasibility is in progress; the light model is not implemented or deployed. Public engine adoption, capacity validation and independent security review remain open. DEX integration remains paused separately.
+Status: the owner selected VPS-side light-wallet scanning after the local-scanning prototype. Client integration and assembled disposable validation passed. The native light-data contract passed real offline-regtest receipt, local signing, confirmation and reorganization tests; no public light service is deployed. Public engine adoption, capacity validation and independent security review remain open. DEX integration remains paused separately.
 
 ## 1. Purpose and decision status
 
@@ -49,8 +49,11 @@ Existing encrypted local backups and pending signed/unknown transactions must
 remain recoverable. Do not silently migrate a wallet's view key to a service
 when importing an old backup; the chosen service and its privacy boundary must
 be explicit. Server-side sensitive state still requires encryption at rest.
-Retention, account deletion, encrypted server storage and public deployment
-remain separate unresolved implementation/delivery details. The model decision
+The owner subsequently selected extending the existing maintained engine and
+approved an isolated LUKS2 test with a new image of at most 4 GiB, including
+`dm_crypt` loading if needed and only that test mount. Retention, account deletion,
+production encryption/key management and public deployment remain unresolved
+delivery details. The model decision
 does not approve plaintext persistence, new fees or replacement cryptography.
 
 ### Recommendations, not yet approved implementation decisions

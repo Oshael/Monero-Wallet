@@ -74,3 +74,32 @@ void test('the original version-1 snapshot fixture remains readable', async () =
   const bytes = Buffer.from(stored.base64, 'base64');
   assert.deepEqual(decodeSnapshot(Uint8Array.from(bytes).buffer), fixture);
 });
+
+void test('light checkpoints use a distinct container and preserve uncertain signed transfers', () => {
+  const pending = {
+    intent: createIntent({ address: '5'.repeat(95), amount: '100', maximumFee: '10' }),
+    fee: '1',
+    status: 'unknown' as const,
+    unsignedHex: '',
+    signedHex: 'cd'.repeat(100_000),
+    hash: 'a'.repeat(64),
+  };
+  const light = { uri: 'https://scanner.example', height: 12345, adoptLegacy: false };
+  const source = { ...fixture, metadata: { ...fixture.metadata, light, pending } };
+  const encoded = encodeSnapshot(source);
+  assert.equal(new DataView(encoded).getUint32(0), 3);
+  assert.deepEqual(decodeSnapshot(encoded), source);
+  new DataView(encoded).setUint32(0, 2);
+  assert.throws(() => decodeSnapshot(encoded), /invalid-snapshot/);
+});
+
+void test('light containers reject ambiguous full caches and invalid scanner metadata', () => {
+  const ambiguous = encodeSnapshot(fixture);
+  new DataView(ambiguous).setUint32(0, 3);
+  assert.throws(() => decodeSnapshot(ambiguous), /invalid-snapshot/);
+  const source = {
+    ...fixture,
+    metadata: { ...fixture.metadata, light: { uri: null, height: 100, adoptLegacy: false } },
+  };
+  assert.throws(() => decodeSnapshot(encodeSnapshot(source)), /invalid-light-settings/);
+});

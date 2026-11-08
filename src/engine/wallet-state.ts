@@ -60,14 +60,36 @@ export class NativeWalletState {
     this.#view.unlockedBalance = unlocked.toString();
   }
 
+  waitForScanner(progress: { height: number; targetHeight: number }): void {
+    this.recordProgress(progress.height, progress.targetHeight);
+    this.#view.sync = 'waiting-scanner';
+  }
+
   async canScan(): Promise<boolean> {
-    const chain = await readChainState(this.#wallet, this.#readNode);
-    this.#view.targetHeight = chain.targetHeight;
+    const chain = await this.#scanTarget();
     if (chain.nodeReady && chain.walletHeight <= chain.targetHeight) return true;
     // Waiting is entered before a native scan; it has no new cache to checkpoint.
-    this.#view.height = chain.walletHeight;
-    this.#view.sync = 'waiting-node';
+    this.#waitForNode(chain.walletHeight);
     return false;
+  }
+
+  async canImportLightData(): Promise<boolean> {
+    const chain = await this.#scanTarget();
+    // A verified replacement snapshot must also recover a node tip that moved backwards.
+    if (chain.nodeReady) return true;
+    this.#waitForNode(chain.walletHeight);
+    return false;
+  }
+
+  async #scanTarget(): Promise<Awaited<ReturnType<typeof readChainState>>> {
+    const chain = await readChainState(this.#wallet, this.#readNode);
+    this.#view.targetHeight = chain.targetHeight;
+    return chain;
+  }
+
+  #waitForNode(walletHeight: number): void {
+    this.#view.height = walletHeight;
+    this.#view.sync = 'waiting-node';
   }
 
   async completeScan(): Promise<void> {

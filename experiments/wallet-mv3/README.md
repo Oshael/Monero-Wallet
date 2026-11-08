@@ -124,13 +124,13 @@ In the guest, install the packages in the upstream `dist` job and add `git`, `cu
 - `emsdk/` contains SDK source `35659964bc2762fffec0d257997fb61475f765b7` with `./emsdk install 6.0.13` and `./emsdk activate 6.0.13` completed.
 - `inputs/` contains `boost_1_83_0.tar.gz`, `unbound-1.22.0.tar.gz` and `openssl-3.5.9.tar.gz`. The script checks their SHA-256 values before extraction. [Boost archive metadata](https://archives.boost.io/release/1.83.0/source/boost_1_83_0.tar.gz.json) · [Unbound releases](https://www.nlnetlabs.nl/projects/unbound/download/) · [OpenSSL 3.5.9](https://github.com/openssl/openssl/releases/tag/openssl-3.5.9)
 
-Apply the three patches to their owning repositories as shown by
+Apply the base patches and the additional `native-light-*.patch` adapters to their owning repositories, and copy the project light-data source exactly as shown by
 `prepare-native-wasm.sh`, then run `bash build-native-wasm.sh` in the isolated
 environment. The script generates OpenSSL 3.5.9 headers and leaves the WASM
 target's OpenSSL link entries disabled. It does not invoke the upstream OpenSSL
 1.1.1q build script. It saves the link map as `~/monero-gate-a/wasm-link.map`.
 
-Copy the staged `monero.js` out of the guest. In a staging tree with the worker patch applied, replace `source/dist/monero.js`, run `npm run build_web_worker` and pass the SHA-256 from the native build to `node verify-worker.mjs source <native-glue-sha256>`. The verifier checks that the worker contains the same WASM bytes as that artifact. Use the recovery and loopback fixtures above with the resulting worker. Secure persistence and real node synchronization require separate evidence.
+Copy the staged `monero.js` out of the guest. In a staging tree with `worker-build.patch` and then `worker-light-build.patch` applied, replace `source/dist/monero.js`, run `npm run build_web_worker` and pass the SHA-256 from the native build to `node verify-worker.mjs source <native-glue-sha256>`. The verifier checks that the worker contains the same WASM bytes as that artifact. Use the recovery and loopback fixtures above with the resulting worker. Secure persistence and real node synchronization require separate evidence.
 
 ### Remote container build
 

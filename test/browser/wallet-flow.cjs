@@ -98,6 +98,13 @@ async function checkFlow(context, id, run) {
   stage = 'backup';
   const seed = await verifySeed(page);
   assert.equal(await assertEncrypted(page, seed), true);
+  stage = 'new-wallet-birthday';
+  assert.equal(
+    await page.evaluate(async () =>
+      (await import('./pending-recovery-probe.js')).nativeBirthdayMatches(),
+    ),
+    true,
+  );
   stage = 'subaddress';
   await page.getByLabel('Address label', { exact: true }).fill('Disposable receiving address');
   await page.getByRole('button', { name: 'Create receiving address' }).click();
@@ -181,6 +188,7 @@ async function checkFlow(context, id, run) {
   console.log(
     JSON.stringify({
       created: true,
+      nativeBirthdayPreserved: true,
       seedVerified: true,
       encryptedRecords: true,
       subaddressCreated: true,

@@ -5,3 +5,8 @@
 !native-build.patch
 !native-core.patch
 !native-wallet.patch
+!native-light-build.patch
+!native-light-core.patch
+!native-light-wallet.patch
+!light-wallet/
+!light-wallet/wallet_light_data.cpp

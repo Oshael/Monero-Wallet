@@ -23,13 +23,13 @@ class ProgressListener extends MoneroWalletListener {
 }
 
 export class WalletSync {
-  readonly #wallet: CandidateWallet;
+  readonly #wallet: Pick<CandidateWallet, 'sync' | 'stopSyncing'>;
   readonly #state: NativeWalletState;
   #running: Promise<void> | undefined;
   #timer: ReturnType<typeof setTimeout> | undefined;
   #fatal: WebAssembly.RuntimeError | undefined;
 
-  constructor(wallet: CandidateWallet, state: NativeWalletState) {
+  constructor(wallet: Pick<CandidateWallet, 'sync' | 'stopSyncing'>, state: NativeWalletState) {
     this.#wallet = wallet;
     this.#state = state;
   }

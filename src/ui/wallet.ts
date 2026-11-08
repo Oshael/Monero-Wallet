@@ -40,7 +40,14 @@ export function walletScreen(options: {
     element: root,
     update: (view) => {
       balances.textContent = `Total: ${formatAmount(view.balance)} · Unlocked: ${formatAmount(view.unlockedBalance)} stagenet XMR`;
-      const status = view.sync === 'waiting-node' ? 'Waiting for the selected node' : view.sync;
+      const labels = {
+        'waiting-node': 'Waiting for the selected node',
+        'waiting-scanner': 'Waiting for the service to scan this wallet',
+      };
+      const status =
+        view.sync === 'waiting-node' || view.sync === 'waiting-scanner'
+          ? labels[view.sync]
+          : view.sync;
       syncState.textContent = `${status} · Scanned ${String(view.height)} / ${String(view.targetHeight)}. Balances may be stale until synchronization completes.`;
       address.textContent = view.address;
       backupState.textContent = view.backupVerified

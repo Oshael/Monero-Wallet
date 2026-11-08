@@ -49,6 +49,13 @@ git -C "$cpp" apply /opt/wallet-build/native-wallet.patch
 core=monero-ts/external/monero-cpp/external/monero-project
 git -C "$core" apply --check /opt/wallet-build/native-core.patch
 git -C "$core" apply /opt/wallet-build/native-core.patch
+git -C monero-ts apply --check /opt/wallet-build/native-light-build.patch
+git -C monero-ts apply /opt/wallet-build/native-light-build.patch
+git -C "$cpp" apply --check /opt/wallet-build/native-light-wallet.patch
+git -C "$cpp" apply /opt/wallet-build/native-light-wallet.patch
+git -C "$core" apply --check /opt/wallet-build/native-light-core.patch
+git -C "$core" apply /opt/wallet-build/native-light-core.patch
+install -m 600 /opt/wallet-build/light-wallet/wallet_light_data.cpp "$core/src/wallet/wallet_light_data.cpp"
 
 download boost_1_83_0.tar.gz https://archives.boost.io/release/1.83.0/source/boost_1_83_0.tar.gz 160000000
 download unbound-1.22.0.tar.gz https://nlnetlabs.nl/downloads/unbound/unbound-1.22.0.tar.gz 20000000

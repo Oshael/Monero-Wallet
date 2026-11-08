@@ -1,0 +1,72 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -254,6 +254,7 @@
+     ${MONERO_PROJECT}/contrib/epee/src/abstract_http_client.cpp
+     #${MONERO_PROJECT}/contrib/epee/src/http_auth.cpp
+     ${MONERO_PROJECT_SRC}/wallet/wallet2.cpp
++    ${MONERO_PROJECT_SRC}/wallet/wallet_light_data.cpp
+     ${MONERO_PROJECT_SRC}/wallet/message_store.cpp
+     ${MONERO_PROJECT_SRC}/wallet/message_transporter.cpp
+     ${MONERO_PROJECT_SRC}/wallet/node_rpc_proxy.cpp
+diff --git a/src/main/cpp/monero_wasm_bridge.h b/src/main/cpp/monero_wasm_bridge.h
+--- a/src/main/cpp/monero_wasm_bridge.h
++++ b/src/main/cpp/monero_wasm_bridge.h
+@@ -96,6 +96,8 @@
+   void get_outputs(int handle, const string& output_query_json, emscripten::val callback);
+   void export_outputs(int handle, bool all, emscripten::val callback);
+   void import_outputs(int handle, const string& outputs_hex, emscripten::val callback);
++  void import_light_wallet_data(int handle, const string& json, emscripten::val callback);
++  void restore_light_wallet_height(int handle, uint32_t height, emscripten::val callback);
+   void export_key_images(int handle, bool all, emscripten::val callback);
+   void import_key_images(int handle, const string& key_images_str, emscripten::val callback);
+   //  emscripten::function("get_new_key_images_from_last_import", &monero_wasm_bridge::get_new_key_images_from_last_import);
+diff --git a/src/main/cpp/monero_wasm_bridge.cpp b/src/main/cpp/monero_wasm_bridge.cpp
+--- a/src/main/cpp/monero_wasm_bridge.cpp
++++ b/src/main/cpp/monero_wasm_bridge.cpp
+@@ -732,6 +732,24 @@
+   monero_wallet* wallet = (monero_wallet*) handle;
+   try {
+     callback(wallet->export_outputs(all));
++  } catch (exception& e) {
++    callback(string(e.what()));
++  }
++}
++
++void monero_wasm_bridge::import_light_wallet_data(int handle, const string& json, emscripten::val callback) {
++  try {
++    ((monero_wallet_full*) handle)->import_light_wallet_data(json);
++    callback();
++  } catch (exception& e) {
++    callback(string(e.what()));
++  }
++}
++
++void monero_wasm_bridge::restore_light_wallet_height(int handle, uint32_t height, emscripten::val callback) {
++  try {
++    ((monero_wallet_full*) handle)->restore_light_wallet_height(height);
++    callback();
+   } catch (exception& e) {
+     callback(string(e.what()));
+   }
+diff --git a/src/main/cpp/index.cpp b/src/main/cpp/index.cpp
+--- a/src/main/cpp/index.cpp
++++ b/src/main/cpp/index.cpp
+@@ -78,6 +78,8 @@
+   emscripten::function("get_outputs", &monero_wasm_bridge::get_outputs);
+   emscripten::function("export_outputs", &monero_wasm_bridge::export_outputs);
+   emscripten::function("import_outputs", &monero_wasm_bridge::import_outputs);
++  emscripten::function("import_light_wallet_data", &monero_wasm_bridge::import_light_wallet_data);
++  emscripten::function("restore_light_wallet_height", &monero_wasm_bridge::restore_light_wallet_height);
+   emscripten::function("export_key_images", &monero_wasm_bridge::export_key_images);
+   emscripten::function("import_key_images", &monero_wasm_bridge::import_key_images);
+ //  emscripten::function("get_new_key_images_from_last_import", &monero_wasm_bridge::get_new_key_images_from_last_import);
+diff --git a/wasm_exception_whitelist.txt b/wasm_exception_whitelist.txt
+--- a/wasm_exception_whitelist.txt
++++ b/wasm_exception_whitelist.txt
+@@ -169,3 +169,5 @@
+ _ZN5tools7wallet217import_key_imagesERKNSt3__26vectorINS1_4pairIN6crypto9key_imageENS4_9signatureEEENS1_9allocatorIS7_EEEEmRySD_b
+ _ZNK5tools7wallet217export_key_imagesEb
+ _ZNK5tools7wallet212sanity_checkERKNSt3__26vectorINS0_10pending_txENS1_9allocatorIS3_EEEERKNS2_IN10cryptonote20tx_destination_entryENS4_ISA_EEEERKNS1_3setIjNS1_4lessIjEENS4_IjEEEE
++_ZN18monero_wasm_bridge24import_light_wallet_dataEiRKNSt3__212basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEEN10emscripten3valE
++_ZN18monero_wasm_bridge27restore_light_wallet_heightEijN10emscripten3valE

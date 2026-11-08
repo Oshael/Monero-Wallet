@@ -1,7 +1,13 @@
 // Test-only capture stays in the disposable browser and never exports wallet secrets.
+interface CapturedRequest {
+  uri: string;
+  metadata: Uint8Array;
+  body: Uint8Array;
+}
+
 export class EgressCapture {
   readonly #original = globalThis.fetch;
-  readonly #requests: Uint8Array[] = [];
+  readonly #requests: CapturedRequest[] = [];
   #bytes = 0;
 
   constructor() {
@@ -17,7 +23,7 @@ export class EgressCapture {
     this.#bytes += metadata.byteLength + body.byteLength;
     if (this.#bytes > 16 * 1024 * 1024 || this.#requests.length >= 2048)
       throw new Error('Egress fixture budget exceeded.');
-    this.#requests.push(metadata, body);
+    this.#requests.push({ uri: request.url, metadata, body });
     return this.#original.call(globalThis, input, init);
   }
 
@@ -25,15 +31,51 @@ export class EgressCapture {
     if (this.#requests.length === 0) throw new Error('Egress fixture observed no requests.');
     for (const secret of secrets) {
       for (const needle of secretEncodings(secret)) {
-        if (this.#requests.some((request) => contains(request, needle)))
+        if (
+          this.#requests.some(
+            (request) => contains(request.metadata, needle) || contains(request.body, needle),
+          )
+        )
           throw new Error('A private canary reached an outgoing request.');
       }
     }
   }
 
+  assertSecretRestricted(secret: string, allowedUris: string[]): void {
+    let shared = false;
+    for (const request of this.#requests) {
+      for (const needle of secretEncodings(secret)) {
+        if (contains(request.metadata, needle)) throw new Error('Private canary in metadata.');
+        if (!contains(request.body, needle)) continue;
+        if (!allowedUris.includes(request.uri))
+          throw new Error('Private canary at wrong endpoint.');
+        shared = true;
+      }
+    }
+    if (!shared) throw new Error('Expected private canary was not observed.');
+  }
+
+  mark(): number {
+    return this.#requests.length;
+  }
+
+  assertNoRequestsSince(mark: number, paths: string[]): void {
+    if (!Number.isSafeInteger(mark) || mark < 0 || mark > this.#requests.length) {
+      throw new Error('Invalid egress fixture mark.');
+    }
+    if (
+      this.#requests.slice(mark).some((request) => paths.includes(new URL(request.uri).pathname))
+    ) {
+      throw new Error('Unexpected chain scan request.');
+    }
+  }
+
   close(): void {
     globalThis.fetch = this.#original;
-    for (const request of this.#requests) request.fill(0);
+    for (const request of this.#requests) {
+      request.metadata.fill(0);
+      request.body.fill(0);
+    }
     this.#requests.length = 0;
   }
 }

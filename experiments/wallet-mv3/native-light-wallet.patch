@@ -1,0 +1,34 @@
+diff --git a/src/wallet/monero_wallet_full.h b/src/wallet/monero_wallet_full.h
+--- a/src/wallet/monero_wallet_full.h
++++ b/src/wallet/monero_wallet_full.h
+@@ -199,6 +199,8 @@
+     std::vector<std::shared_ptr<monero_output_wallet>> get_outputs(const monero_output_query& query) const override;
+     std::string export_outputs(bool all = false) const override;
+     int import_outputs(const std::string& outputs_hex) override;
++    void import_light_wallet_data(const std::string& json);
++    void restore_light_wallet_height(uint32_t height);
+     std::shared_ptr<monero_key_image_export_result> export_key_images(bool all = false) const override;
+     std::shared_ptr<monero_key_image_import_result> import_key_images(const std::vector<std::shared_ptr<monero_key_image>>& key_images, uint64_t offset = 0) override;
+     void freeze_output(const std::string& key_image) override;
+diff --git a/src/wallet/monero_wallet_full.cpp b/src/wallet/monero_wallet_full.cpp
+--- a/src/wallet/monero_wallet_full.cpp
++++ b/src/wallet/monero_wallet_full.cpp
+@@ -1442,6 +1442,18 @@
+     return result;
+   }
+ 
++  void monero_wallet_full::import_light_wallet_data(const std::string& json) {
++    assert_not_closed();
++    sync_op_lock op_lock(*this);
++    m_w2->import_light_wallet_data(json);
++  }
++
++  void monero_wallet_full::restore_light_wallet_height(uint32_t height) {
++    assert_not_closed();
++    sync_op_lock op_lock(*this);
++    m_w2->restore_light_wallet_height(height);
++  }
++
+   uint64_t monero_wallet_full::get_height() const {
+     assert_not_closed();
+     return m_w2->get_blockchain_current_height();

@@ -12,7 +12,8 @@ against the scanner operator. No third-party scanner, new fee, public deployment
 or replacement cryptographic implementation is selected by this decision.
 
 The existing stagenet wallet and its verified encrypted backups remain the legacy
-baseline. The light model is not yet integrated. Its adoption must preserve
+baseline. Client integration and assembled disposable validation passed; no light-wallet
+release or public service is adopted. Adoption must preserve
 original encrypted backups, labels and pending signed/uncertain transactions.
 A disconnected or behind scanner must not establish spendability or cause a
 replacement transaction after an unknown broadcast. Seed-only independent
@@ -39,7 +40,7 @@ recovery remains required.
 `e70630140be66ac80b990df8221063ae7f28499c`, is a candidate, not an adopted
 release. Its BSD-3-Clause license permits use subject to retaining the upstream
 notices; the complete dependency/distribution review remains pending. Its code
-contains subaddress registration and tests. The current browser wrapper does not expose the core's light-wallet mode.
+contains subaddress registration and tests. The original browser wrapper does not expose the core's light-wallet mode.
 Read-only source review also found that the pinned core's
 `wallet2::light_wallet_key_image_is_ours` explicitly uses the original primary
 address scheme and states that subaddresses are unsupported. Its output import
@@ -62,7 +63,11 @@ resource measurements; and absence of seed/spend keys from network/storage/logs.
 Only the intentionally shared view key is exempt from the former egress rule,
 and only at the selected scanner endpoint.
 
-## Client integration decision prepared for owner review
+## Approved client integration route
+
+The owner selected extending the current maintained engine on 2026-11-07.
+The separate LWSF replacement was not selected. The comparison below is retained
+as decision context.
 
 Both routes below retain VPS-side scanning, local seed/spend authority, explicit
 transaction approval, subaddresses and independent recovery. Neither permits
@@ -78,35 +83,112 @@ The reviewed LWSF revision is
 `7f0d1ff11860ed8c265f6f7e0dc095c20d885fe2`. It is not installed, compiled,
 adopted or substituted into the app. Reviewing another API is not proof of
 end-to-end support. No project-authored cryptographic primitive is proposed.
-The affected client implementation is paused pending the owner's route choice.
+The owner approved completing the current engine's light-data adapter using
+existing Monero routines, preserving subaddresses, local signing and recovery.
+This does not authorize a replacement engine or project-authored cryptography.
 
-## Protected storage proposal
+## Approved protected-storage feasibility test
 
 Keep the upstream LWS database inside a project-exclusive encrypted filesystem
 rather than introduce row-encryption cryptography into its LMDB records. A
-LUKS2-backed private image is a candidate storage mechanism, not an approved
-provisioning operation. Read-only capability checks found `cryptsetup` and
+LUKS2-backed private image was approved for an isolated feasibility test on
+2026-11-07. Production provisioning remains separate. Initial read-only capability checks found `cryptsetup` and
 `losetup` available; device-mapper control exists, while an already loaded
 `dm_crypt` module was not observed. That does not prove that a mapping will work.
-No kernel module was loaded and no image, mapping, filesystem or mount was made.
+Those initial checks did not load a kernel module or create an image, mapping,
+filesystem or mount. The approved test was subsequently executed as recorded below.
 
-A proposed storage feasibility test would create only a new 4 GiB sparse image,
-use a temporary recovery key, open/close one project mapping, format only that
-new mapping and verify persistence/reopen and cleanup. It would not modify an
+The storage feasibility test was scoped to a new 4 GiB sparse image,
+a temporary recovery key, one project mapping, formatting only that
+new mapping and verifying persistence/reopen and cleanup. It did not modify an
 existing partition, host boot configuration, firewall, shared service or system
-package. Loading `dm_crypt` or mounting a filesystem is host-level work and needs
-explicit approval for that scope before execution. Operational paths, commands,
+package. The owner explicitly authorized loading `dm_crypt` if needed and mounting or
+unmounting only that test volume. No existing partitions, shared services or
+boot configuration may change. Operational paths, commands,
 keys and evidence stay ignored. The test is not production key custody or a
 promise of automatic reboot recovery. A mounted encrypted volume remains
 readable to host root; backup encryption, key recovery, deletion and crash
 behavior still need review. No host-wide encryption or unrelated data migration
 is proposed.
 
-## Open delivery details
+## Protected-storage feasibility result
 
-Encrypted server storage, retention/deletion, a maintained client integration,
-service admission/capacity controls, public origin/TLS and deployment remain
-unselected. Investigate existing supported mechanisms first. Do not silently
+The approved isolated test passed: a new LUKS2 image was formatted, mounted,
+written, closed, reopened and read with matching content. It was then unmounted,
+its mapping closed, and the temporary key and image removed. Baseline service
+health and configuration fingerprints matched before and after. No wallet key
+was stored during the test. This establishes the feasibility of a private
+project volume on the tested host, not production key management, deletion,
+backup or automatic reboot recovery.
+
+## Client checkpoint and migration design
+
+Newly generated wallets persist the native engine's conservative restore height
+as their light-scanner birthday. This matches the existing native new-wallet
+scan starting point instead of requesting a genesis scan because of an unrelated
+metadata default. Seed restorations retain the explicitly requested height,
+including zero. Existing backup birthdays are preserved. No current-tip guess
+at connection time replaces a wallet's original birthday.
+
+Known received outputs cannot disappear from a snapshot while the selected node
+still reports their parent transaction as confirmed. Missing outputs require a
+bounded node check before their old slots become inactive; ambiguous or failed
+checks preserve the previous checkpoint. This protects already known receipts,
+while the scanner remains responsible for completeness of previously unknown
+history. Reorganizations must be validated against an actual changed node view,
+not a synthetic omission with an unchanged node.
+
+Light checkpoints use internal snapshot container version 3, with explicit
+scanner selection, last imported height and a legacy-adoption marker. The vault
+encryption, AAD, database and storage keys do not change. Versions 1 and 2 remain
+readable; older clients must reject version 3 rather than mistake its cache for
+a locally scanned wallet. Signed and uncertain transfer recovery stays in the
+existing bounded recovery section.
+
+Legacy adoption is explicit. The native adapter stages verified replacement
+outputs while retaining subaddress labels and locally known outgoing records.
+Only a successful atomic import clears the native full-scan marker. Failure
+leaves the previous native state intact. The canonical adoption flag is supplied
+by the local workflow, never copied from an untrusted scanner response. Unresolved
+transactions retain the same signed bytes and input reservations.
+
+Native transfer indexes remain stable across reordered responses and missing
+fork outputs. Missing outputs retain an inactive slot; the adapter uses the
+native spent-height maximum as an internal retirement marker, never as a real
+chain height. Reappearing outputs reuse their original slot and retain explicit
+freeze state. This preserves the existing native signed-set/key-image validation
+without bypassing checks or changing signed transaction bytes. Container version
+3 prevents an older application from treating this adapter cache as a full scan.
+Both the active response and retained ledger are bounded to 10,000 outputs and
+1,000,000 reconstructed output slots; exceeding a budget fails without replacing
+the prior checkpoint. No accepted output record is silently deleted.
+
+The pinned LWS counts its forward lookahead against `max_subaddresses`. Supporting
+account 0 indexes 0–999 with a 1,000-position lookahead requires scanner capacity
+of at least 2,000 positions. This is a server scanning budget, not an extension
+of the product's 1,000-subaddress range. The client checks capacity before sending
+the view key and rejects a reported lookahead failure.
+
+The adapter uses the pinned Monero routines for ownership, key images, RingCT
+commitments, transaction parsing, selection and signing. It cross-checks received
+outputs and relevant confirmed transactions against the selected node, with
+bounded batches and a shared deadline. These queries reveal the requested
+receiving outputs/transactions to that node; use the project node with its scanner.
+They never transmit the seed, spend key or locally computed key images. A remote
+node/scanner remains a trust dependency for chain membership and completeness;
+this does not provide independent consensus verification in the browser.
+
+## Remaining delivery decisions
+
+See the concrete [service delivery options](LIGHT_SERVICE_DELIVERY.md) for
+protected persistence, restart recovery, deletion and retention decisions. The
+server-side deletion extension and persistent storage setup are proposals, not
+part of the already approved native-engine build.
+
+Production encrypted storage/key management, retention/deletion, service
+admission/capacity controls, public origin/TLS and deployment remain unselected.
+The approved current-engine integration and storage test do not establish
+production compatibility or authorize public activation. Investigate existing supported mechanisms first. Do not silently
 accept plaintext persistence, drop subaddresses, replace the engine or create a
 custom cryptographic implementation to make the integration fit.
 

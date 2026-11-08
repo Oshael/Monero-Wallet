@@ -6,7 +6,7 @@ export interface WalletView {
   targetHeight: number;
   balance: string;
   unlockedBalance: string;
-  sync: 'offline' | 'syncing' | 'synced' | 'waiting-node' | 'failed';
+  sync: 'offline' | 'syncing' | 'synced' | 'waiting-node' | 'waiting-scanner' | 'failed';
   backupVerified: boolean;
   pending: {
     id: string;
@@ -22,7 +22,11 @@ export interface WalletView {
 export function walletView(value: unknown): WalletView {
   const data = object(value);
   const sync = data.sync;
-  if (!['offline', 'syncing', 'synced', 'waiting-node', 'failed'].includes(String(sync))) {
+  if (
+    !['offline', 'syncing', 'synced', 'waiting-node', 'waiting-scanner', 'failed'].includes(
+      String(sync),
+    )
+  ) {
     throw new WalletError('invalid-input');
   }
   if (typeof data.backupVerified !== 'boolean') throw new WalletError('invalid-input');

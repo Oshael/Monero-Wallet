@@ -49,6 +49,10 @@ export class WalletEngine {
     return this.#view({ kind: 'node', node });
   }
 
+  async connectLight(connection: { uri: string; node: NodeConnection }): Promise<WalletView> {
+    return this.#view({ kind: 'light-service', ...connection });
+  }
+
   async startSync(): Promise<WalletView> {
     return this.#view({ kind: 'start-sync' });
   }

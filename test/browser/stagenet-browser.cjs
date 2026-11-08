@@ -54,6 +54,16 @@ class StagenetBrowser {
     });
   }
 
+  async importBackup(filename) {
+    await this.page.getByText('Import encrypted backup', { exact: true }).click();
+    await this.page.getByLabel('Backup file', { exact: true }).setInputFiles(filename);
+    await this.page.getByLabel('Backup password', { exact: true }).fill(password);
+    await this.act('Open encrypted backup');
+    await this.page
+      .getByRole('button', { name: 'Lock wallet', exact: true })
+      .waitFor({ timeout: 45_000 });
+  }
+
   async create() {
     await this.page.getByLabel('Password — at least 12 characters', { exact: true }).fill(password);
     await this.page.getByRole('button', { name: 'Create wallet', exact: true }).click();
@@ -79,6 +89,15 @@ class StagenetBrowser {
     await this.page.getByLabel('Node username (optional)', { exact: true }).fill('fixture');
     await this.page.getByLabel('Node password (optional)', { exact: true }).fill('disposable');
     await this.act('Connect to selected node');
+  }
+
+  async connectLight(scanner, uri = 'http://127.0.0.1:38081') {
+    await this.page.getByLabel('Stagenet scanner URL (HTTPS)', { exact: true }).fill(scanner);
+    await this.page.getByLabel('Matching stagenet node URL (HTTPS)', { exact: true }).fill(uri);
+    await this.page.getByLabel('Node username (optional)', { exact: true }).fill('fixture');
+    await this.page.getByLabel('Node password (optional)', { exact: true }).fill('disposable');
+    await this.page.getByRole('checkbox').check();
+    await this.act('Use selected light wallet service');
   }
 
   async act(title, expected = 'Done.') {
@@ -108,7 +127,7 @@ class StagenetBrowser {
     const deadline = performance.now() + 15 * 60_000;
     while (performance.now() < deadline) {
       const state = await this.page.locator('#wallet-sync').textContent();
-      assert.ok(!state.startsWith('failed') && !state.startsWith('Waiting'));
+      assert.ok(!state.startsWith('failed') && !state.startsWith('Waiting for the selected node'));
       if (state.startsWith('synced')) return;
       await this.page.waitForTimeout(5000);
       await this.page.mouse.click(5, 5);

@@ -1,0 +1,54 @@
+diff --git a/src/wallet/CMakeLists.txt b/src/wallet/CMakeLists.txt
+--- a/src/wallet/CMakeLists.txt
++++ b/src/wallet/CMakeLists.txt
+@@ -35,6 +35,7 @@
+ set(wallet_sources
+   wallet2.cpp
+   wallet_args.cpp
++  wallet_light_data.cpp
+   pending_tx_validation.cpp
+   ringdb.cpp
+   node_rpc_proxy.cpp
+diff --git a/src/wallet/wallet2.h b/src/wallet/wallet2.h
+--- a/src/wallet/wallet2.h
++++ b/src/wallet/wallet2.h
+@@ -1105,6 +1105,9 @@
+     /*!
+     * \brief Checks if light wallet. A light wallet sends view key to a server where the blockchain is scanned.
+     */
++    // Project LWS adapter: verified outputs with native selection/signing retained.
++    void import_light_wallet_data(const std::string& json);
++    void restore_light_wallet_height(uint64_t height);
+     bool light_wallet() const { return m_light_wallet; }
+     void set_light_wallet(bool light_wallet) { m_light_wallet = light_wallet; }
+     uint64_t get_light_wallet_scanned_block_height() const { return m_light_wallet_scanned_block_height; }
+@@ -1833,6 +1836,14 @@
+     static std::string get_default_daemon_address() { CRITICAL_REGION_LOCAL(default_daemon_address_lock); return default_daemon_address; }
+ 
+   private:
++    void verify_light_wallet_outputs(const transfer_container& outputs,
++        std::chrono::steady_clock::time_point deadline);
++    void verify_missing_light_wallet_outputs(const transfer_container& incoming,
++        std::chrono::steady_clock::time_point deadline);
++    std::map<crypto::hash, confirmed_transfer_details> verify_light_wallet_transactions(transfer_container& outputs, payment_container& payments,
++        const std::map<crypto::hash, uint64_t>& confirmations, std::chrono::steady_clock::time_point deadline);
++    static bool parse_light_wallet_transaction(const cryptonote::COMMAND_RPC_GET_TRANSACTIONS::entry& entry,
++        cryptonote::transaction& transaction, crypto::hash& hash);
+     /*!
+      * \brief  Stores wallet information to wallet file.
+      * \param  keys_file_name Name of wallet file
+diff --git a/src/wallet/wallet2.cpp b/src/wallet/wallet2.cpp
+--- a/src/wallet/wallet2.cpp
++++ b/src/wallet/wallet2.cpp
+@@ -1038,5 +1038,11 @@
+ 
+ namespace tools
+ {
++bool wallet2::parse_light_wallet_transaction(const cryptonote::COMMAND_RPC_GET_TRANSACTIONS::entry& entry,
++    cryptonote::transaction& transaction, crypto::hash& hash)
++{
++  return get_pruned_tx(entry, transaction, hash);
++}
++
+ constexpr const std::chrono::seconds wallet2::rpc_timeout;
+ const char* wallet2::tr(const char* str) { return i18n_translate(str, "tools::wallet2"); }

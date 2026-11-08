@@ -10,6 +10,10 @@ export type TransferCommand =
   | { kind: 'approve-send' | 'arm-send' | 'broadcast-send' | 'cancel-send'; id: string }
   | { kind: 'reconcile-send' };
 
+export type ConnectionCommand =
+  | { kind: 'node'; node: NodeConnection }
+  | { kind: 'light-service'; uri: string; node: NodeConnection };
+
 export type EngineCommand =
   | { kind: 'create'; seed: string; restoreHeight: number }
   | { kind: 'open'; snapshot: ArrayBuffer }
@@ -17,7 +21,7 @@ export type EngineCommand =
   | { kind: 'view' }
   | { kind: 'seed' }
   | { kind: 'verify-seed'; seed: string }
-  | { kind: 'node'; node: NodeConnection }
+  | ConnectionCommand
   | { kind: 'start-sync' }
   | { kind: 'stop-sync' }
   | { kind: 'subaddress'; label: string }
@@ -26,6 +30,10 @@ export type EngineCommand =
 
 export function isTransferCommand(command: EngineCommand): command is TransferCommand {
   return command.kind.endsWith('-send');
+}
+
+export function isConnectionCommand(command: EngineCommand): command is ConnectionCommand {
+  return command.kind === 'node' || command.kind === 'light-service';
 }
 
 export type EngineReply =
@@ -57,6 +65,12 @@ export function decodeCommand(value: unknown): EngineCommand {
       return { kind: 'verify-seed', seed: text(data.seed, 4096) };
     case 'node':
       return { kind: 'node', node: nodeConnection(data.node) };
+    case 'light-service':
+      return {
+        kind: 'light-service',
+        uri: nodeConnection({ uri: data.uri, username: '', password: '' }).uri,
+        node: nodeConnection(data.node),
+      };
     case 'subaddress':
       return { kind: 'subaddress', label: text(data.label, 128) };
     case 'prepare-send':

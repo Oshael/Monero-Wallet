@@ -5,6 +5,8 @@ import type { NodeConnection } from '../domain/validation.ts';
 import { inspectTransaction } from '../transactions/index.ts';
 import type { InspectedTransaction, SendIntent } from '../transactions/index.ts';
 
+export type PreparationCheckpoint = { kind: 'full' } | { kind: 'light'; height: number };
+
 export class TransactionSigner {
   readonly #wallet: CandidateWallet;
   readonly #opening: {
@@ -32,6 +34,7 @@ export class TransactionSigner {
   async prepare(
     intent: SendIntent,
     node: NodeConnection,
+    source: PreparationCheckpoint = { kind: 'full' },
   ): Promise<{ unsignedHex: string; fee: string }> {
     if (!(await MoneroUtils.isValidAddress(intent.address, this.#opening.networkType))) {
       throw new WalletError('invalid-address');
@@ -41,7 +44,7 @@ export class TransactionSigner {
       await observer.setDaemonConnection({ ...node }, false);
       // Compact output exports omit RingCT masks. A native view-only keys/cache
       // snapshot preserves the scanned outputs without granting spend authority.
-      await observer.sync(await this.#wallet.getHeight());
+      await this.#initializeObserver(observer, source);
       const transaction = await observer.createTx({
         accountIndex: 0,
         address: intent.address,
@@ -56,6 +59,20 @@ export class TransactionSigner {
     } finally {
       await observer.close(false);
     }
+  }
+
+  async #initializeObserver(
+    observer: CandidateWallet,
+    source: PreparationCheckpoint,
+  ): Promise<void> {
+    const height = await this.#wallet.getHeight();
+    if (source.kind === 'light') {
+      if (source.height !== height || height === 0)
+        throw new WalletError('synchronization-required');
+      await observer.restoreLightWalletHeight(height);
+      return;
+    }
+    await observer.sync(height);
   }
 
   async #observer(node: NodeConnection): Promise<CandidateWallet> {
