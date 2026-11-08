@@ -1,5 +1,39 @@
 # Wallet implementation and verification
 
+## Approved server work (2026-11-08)
+
+The LWS database owns authenticated deletion, account-scoped indexes and atomic
+writer transactions. The wallet HTTP endpoint validates the request and invokes
+that operation; it does not manipulate tables. Scanner workers must stop using
+deleted registrations and cannot repopulate them from an older scan. Protected
+storage owns the encrypted filesystem and manual mount lifecycle independently
+of scanning. Neither responsibility belongs in the browser runtime or vault.
+The approved scope is the pinned server extension and isolated LUKS2 persistence,
+with no public activation or automatic retention/backup policy selection.
+
+The maintained patch, build recipe and contracts are in
+[`experiments/lws`](../experiments/lws/README.md). The final native suite passed
+all 24 cases in the isolated Linux build. A disposable stagenet registration and
+deletion authorization survived an actual LUKS2 close/reopen; recovery, deletion,
+re-registration and replay rejection passed under an unprivileged identity.
+The affected HTTP/database contracts also passed on the encrypted filesystem.
+The volume was closed afterward and its temporary server-side unlock key removed.
+No client vault format, seed/spend authority or existing funded backup changed.
+
+The server structural review kept account deletion and every index mutation in
+the database writer transaction. Shared image references are maintained by the
+existing spend insertion/rollback owner. HTTP owns decoding and composing the
+database operation with mempool-cache invalidation. Scanner polling invokes
+bounded cleanup without owning tables or deletion state. No application-wide
+state bag, dependency cycle or browser/server import was added. Existing database
+CRUD remains in upstream storage; this change adds one cohesive account lifecycle
+operation there rather than moving table ownership to a transport handler.
+The first-use fork schema rejects non-empty upstream private tables; no existing
+database was migrated. The browser deletion workflow, retention, backups and
+public startup workflow remain separate outstanding work.
+
+## Continuing execution authority
+
 The owner authorized completing the wallet work on 2026-11-07, continuing without
 milestone approval requests and stopping for material owner decisions. The owner
 also explicitly authorized continuation after context compaction once the task,

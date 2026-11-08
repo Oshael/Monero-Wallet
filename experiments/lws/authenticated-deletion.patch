@@ -1,0 +1,912 @@
+--- a/src/db/storage.cpp
++++ b/src/db/storage.cpp
+@@ -376,6 +376,44 @@
+       "subaddress_indexes_by_account_id,public_key", (MDB_CREATE | MDB_DUPSORT), MONERO_COMPARE(subaddress_map, subaddress)
+     };
+ 
++    // Fork schema v1: monotonic IDs prevent stale scans from targeting a new
++    // registration. Tokens authorize one registration's deletion, not its heir.
++    struct delete_token
++    {
++      account_address address;
++      crypto::hash token;
++    };
++    struct image_reference
++    {
++      output_id source;
++      crypto::key_image image;
++    };
++    bool operator<(const image_reference& left, const image_reference& right) noexcept
++    {
++      if (left.source < right.source) return true;
++      if (right.source < left.source) return false;
++      return std::memcmp(&left.image, &right.image, sizeof(left.image)) < 0;
++    }
++    static_assert(sizeof(image_reference) == sizeof(output_id) + 32, "padding in image reference");
++    const lmdb::basic_table<unsigned, account_id> account_counter{
++      "wallet_account_counter_v1", MDB_CREATE
++    };
++    const lmdb::basic_table<unsigned, delete_token> delete_tokens{
++      "wallet_delete_tokens_v1", MDB_CREATE | MDB_DUPSORT,
++      MONERO_COMPARE(delete_token, address.view_public)
++    };
++    struct deletion_entry
++    {
++      account_id id;
++      account_address address;
++    };
++    const lmdb::basic_table<crypto::hash, deletion_entry> deletion_queue{
++      "wallet_deletion_queue_v1", MDB_CREATE
++    };
++    const lmdb::basic_table<image_reference, account_id> image_references{
++      "wallet_image_references_v1", MDB_CREATE | MDB_DUPSORT
++    };
++
+     template<typename D>
+     expect<void> check_cursor(MDB_txn& txn, MDB_dbi tbl, std::unique_ptr<MDB_cursor, D>& cur) noexcept
+     {
+@@ -662,34 +700,61 @@
+       return out;
+     }
+ 
+-    expect<account_id> find_last_id(MDB_cursor& cur) noexcept
+-    {
+-      account_id best = account_id(0);
+-
+-      MDB_val key{};
+-      MDB_val value{};
+-
+-      int err = mdb_cursor_get(&cur, &key, &value, MDB_FIRST);
+-      if (err == MDB_NOTFOUND)
+-        return best;
+-      if (err)
+-        return log_lmdb_error(err, __LINE__, __FILE__);
+-
+-      do
+-      {
+-        MLWS_LMDB_CHECK(mdb_cursor_get(&cur, &key, &value, MDB_LAST_DUP));
+-        const expect<account_id> current =
+-          accounts.get_value<MONERO_FIELD(account, id)>(value);
+-        if (!current)
+-          return current.error();
+-
+-
+-        best = std::max(best, *current);
+-        err = mdb_cursor_get(&cur, &key, &value, MDB_NEXT_NODUP);
+-        if (err == MDB_NOTFOUND)
+-          return best;
+-      } while (err == 0);
+-      return log_lmdb_error(err, __LINE__, __FILE__);
++    expect<void> clear_delete_token(MDB_txn& txn, const account_address& address)
++    {
++      const auto table = delete_tokens.open(txn);
++      if (!table) return table.error();
++      cursor::outputs cur;
++      MONERO_CHECK(check_cursor(txn, *table, cur));
++      const unsigned version = 1;
++      MDB_val key = lmdb::to_val(version), value = lmdb::to_val(address);
++      const int found = mdb_cursor_get(cur.get(), &key, &value, MDB_GET_BOTH);
++      if (found == MDB_NOTFOUND) return success();
++      MLWS_LMDB_CHECK(found);
++      MLWS_LMDB_CHECK(mdb_cursor_del(cur.get(), 0));
++      return success();
++    }
++
++    expect<account_id> allocate_account_id(MDB_txn& txn, MDB_dbi counter)
++    {
++      const unsigned version = 1;
++      MDB_val key = lmdb::to_val(version), value{};
++      MLWS_LMDB_CHECK(mdb_get(&txn, counter, &key, &value));
++      auto previous = account_counter.get_value<account_id>(value);
++      if (!previous)
++        return previous.error();
++      const account_id next = account_id(lmdb::to_native(*previous) + 1);
++      if (next == account_id::invalid)
++        return {lws::error::account_max};
++      value = lmdb::to_val(next);
++      MLWS_LMDB_CHECK(mdb_put(&txn, counter, &key, &value, 0));
++      return next;
++    }
++
++    expect<void> remove_image_reference(MDB_cursor& images_cur, const account_id user, const spend& entry)
++    {
++      MDB_txn* txn = mdb_cursor_txn(&images_cur);
++      const auto refs = image_references.open(*txn);
++      if (!refs)
++        return refs.error();
++      const image_reference reference{entry.source, entry.image};
++      MDB_val key = lmdb::to_val(reference), value = lmdb::to_val(user);
++      const int removed = mdb_del(txn, *refs, &key, &value);
++      if (removed != MDB_NOTFOUND && removed)
++        return log_lmdb_error(removed, __LINE__, __FILE__);
++      const int remaining = mdb_get(txn, *refs, &key, &value);
++      if (!remaining)
++        return success();
++      if (remaining != MDB_NOTFOUND)
++        return log_lmdb_error(remaining, __LINE__, __FILE__);
++      key = lmdb::to_val(entry.source);
++      value = lmdb::to_val(entry.image);
++      const int found = mdb_cursor_get(&images_cur, &key, &value, MDB_GET_BOTH);
++      if (found == MDB_NOTFOUND)
++        return success();
++      MLWS_LMDB_CHECK(found);
++      MLWS_LMDB_CHECK(mdb_cursor_del(&images_cur, 0));
++      return success();
+     }
+ 
+     template<typename T>
+@@ -718,6 +783,10 @@
+       MDB_dbi events;
+       MDB_dbi subaddress_ranges;
+       MDB_dbi subaddress_indexes;
++      MDB_dbi counter;
++      MDB_dbi delete_tokens;
++      MDB_dbi deletion_queue;
++      MDB_dbi image_references;
+     } tables;
+ 
+     const unsigned create_queue_max;
+@@ -771,6 +840,30 @@
+         MONERO_UNWRAP(convert_table<v0::request_info, request_info>(*txn, *v0_requests, tables.requests));
+       else if (v0_requests != lmdb::error(MDB_NOTFOUND))
+         MONERO_THROW(v0_requests.error(), "Error open old requests table");
++
++      tables.counter = account_counter.open(*txn).value();
++      tables.delete_tokens = delete_tokens.open(*txn).value();
++      tables.deletion_queue = deletion_queue.open(*txn).value();
++      tables.image_references = image_references.open(*txn).value();
++      const unsigned fork_version = 1;
++      MDB_val fork_key = lmdb::to_val(fork_version), fork_value{};
++      const int fork_found = mdb_get(txn.get(), tables.counter, &fork_key, &fork_value);
++      if (fork_found == MDB_NOTFOUND)
++      {
++        for (const auto table : {tables.accounts, tables.requests, tables.outputs,
++             tables.spends, tables.images, tables.subaddress_ranges, tables.subaddress_indexes})
++        {
++          MDB_stat stats{};
++          if (mdb_stat(txn.get(), table, &stats)) throw std::runtime_error{"Cannot inspect fork prerequisite"};
++          if (stats.ms_entries)
++            throw std::runtime_error{"Deletion fork requires a fresh database; no automatic upstream migration"};
++        }
++        const account_id initial = account_id(0);
++        fork_value = lmdb::to_val(initial);
++        if (mdb_put(txn.get(), tables.counter, &fork_key, &fork_value, MDB_NOOVERWRITE)) throw std::runtime_error{"Cannot initialize deletion schema"};
++      }
++      else if (fork_found)
++        throw std::runtime_error{"Cannot read deletion fork schema"};
+ 
+       check_blockchain(*txn, tables.blocks);
+       check_pow(*txn, tables.pows);
+@@ -1531,19 +1624,9 @@
+ 
+       for (;;)
+       {
+-        const expect<output_id> out = spends.get_value<MONERO_FIELD(spend, source)>(value);
+-        if (!out)
+-          return out.error();
+-
+-        const expect<crypto::key_image> image =
+-          spends.get_value<MONERO_FIELD(spend, image)>(value);
+-        if (!image)
+-          return image.error();
+-
+-        key = lmdb::to_val(*out);
+-        value = lmdb::to_val(*image);
+-        MLWS_LMDB_CHECK(mdb_cursor_get(&images_cur, &key, &value, MDB_GET_BOTH));
+-        MLWS_LMDB_CHECK(mdb_cursor_del(&images_cur, 0));
++        const auto entry = spends.get_value<spend>(value);
++        if (!entry) return entry.error();
++        MONERO_CHECK(remove_image_reference(images_cur, user, *entry));
+ 
+         MLWS_LMDB_CHECK(mdb_cursor_del(&spends_cur, 0));
+         const int err = mdb_cursor_get(&spends_cur, &key, &value, MDB_NEXT_DUP);
+@@ -2107,6 +2190,7 @@
+       MLWS_LMDB_CHECK(
+         mdb_cursor_put(&accounts_cur, &key, &value, MDB_NODUPDATA)
+       );
++      MONERO_CHECK(clear_delete_token(*mdb_cursor_txn(&accounts_cur), user.address));
+       return success();
+     }
+   } // anonymous
+@@ -2130,9 +2214,9 @@
+       MONERO_CHECK(check_cursor(txn, this->db->tables.accounts_ba, accounts_ba_cur));
+       MONERO_CHECK(check_cursor(txn, this->db->tables.accounts_bh, accounts_bh_cur));
+ 
+-      const expect<account_id> last_id = find_last_id(*accounts_cur);
+-      if (!last_id)
+-        return last_id.error();
++      const expect<account_id> next_id = allocate_account_id(txn, this->db->tables.counter);
++      if (!next_id)
++        return next_id.error();
+ 
+       MDB_val keyv = lmdb::to_val(blocks_version);
+       MDB_val value{};
+@@ -2145,9 +2229,8 @@
+       if (!height)
+         return height.error();
+ 
+-      const account_id next_id = account_id(lmdb::to_native(*last_id) + 1);
+       account user{};
+-      user.id = next_id;
++      user.id = *next_id;
+       user.address = address;
+       static_assert(sizeof(user.key) == sizeof(key), "bad memcpy");
+       std::memcpy(std::addressof(user.key), std::addressof(key), sizeof(key));
+@@ -2653,6 +2736,7 @@
+       if (err)
+         return log_lmdb_error(err, __LINE__, __FILE__);
+ 
++      MONERO_CHECK(clear_delete_token(txn, address));
+       std::vector<webhook_new_account> hooks{};
+       webhook_key wkey{account_id::invalid, webhook_type::new_account};
+       keyv = lmdb::to_val(wkey);
+@@ -2795,9 +2879,6 @@
+       MONERO_CHECK(check_cursor(txn, tables.subaddress_indexes, indexes_cur));
+       MONERO_CHECK(check_cursor(txn, tables.outputs, outputs_cur));
+ 
+-      expect<account_id> last_id = find_last_id(*accounts_cur);
+-      if (!last_id)
+-        return last_id.error();
+ 
+       const request req = request::create;
+       for (account_address const& address : addresses)
+@@ -2816,12 +2897,11 @@
+ 
+         MLWS_LMDB_CHECK(mdb_cursor_del(requests_cur.get(), 0));
+ 
+-        const account_id next_id = account_id(lmdb::to_native(*last_id) + 1);
+-        if (next_id == account_id::invalid)
+-          return {lws::error::account_max};
++        const auto next_id = allocate_account_id(txn, tables.counter);
++        if (!next_id) return next_id.error();
+ 
+         account user{};
+-        user.id = next_id;
++        user.id = *next_id;
+         user.address = address;
+         user.key = info->key;
+         user.start_height = info->start_height;
+@@ -2842,7 +2922,6 @@
+           return added.error();
+         }
+ 
+-        *last_id = next_id;
+         stored.push_back(address);
+       }
+       return stored;
+@@ -2954,6 +3033,7 @@
+         if (!err)
+         {
+           MLWS_LMDB_CHECK(mdb_cursor_del(requests_cur.get(), 0));
++          if (req == request::create) MONERO_CHECK(clear_delete_token(txn, address));
+           rejected.push_back(address);
+         }
+       }
+@@ -2970,6 +3050,14 @@
+       MONERO_CHECK(bulk_insert(spends_cur, user, spends));
+       for (auto const& entry : spends)
+       {
++        MDB_txn* txn = mdb_cursor_txn(&images_cur);
++        const auto refs = image_references.open(*txn);
++        if (!refs) return refs.error();
++        const image_reference reference{entry.source, entry.image};
++        MDB_val ref_key = lmdb::to_val(reference), ref_value = lmdb::to_val(user);
++        const int ref_err = mdb_put(txn, *refs, &ref_key, &ref_value, MDB_NODUPDATA);
++        if (ref_err && ref_err != MDB_KEYEXIST)
++          return log_lmdb_error(ref_err, __LINE__, __FILE__);
+         const db::key_image image{entry.image, entry.link};
+ 
+         MDB_val key = lmdb::to_val(entry.source);
+@@ -3294,8 +3382,12 @@
+             continue; // to next account
+           }
+ 
+-          status_key =
+-            accounts_by_address.get_value<MONERO_FIELD(account_by_address, lookup)>(temp_value).value().status;
++          const auto lookup = accounts_by_address.get_value<MONERO_FIELD(account_by_address, lookup)>(temp_value);
++          if (!lookup) return lookup.error();
++          if (lookup->id != user_id) continue;
++          status_key = lookup->status;
++          key = lmdb::to_val(status_key);
++          value = lmdb::to_val(user_id);
+           MLWS_LMDB_CHECK(mdb_cursor_get(accounts_cur.get(), &key, &value, MDB_GET_BOTH));
+         }
+ 
+@@ -3356,6 +3448,15 @@
+       MONERO_CHECK(check_cursor(txn, this->db->tables.subaddress_ranges, ranges_cur));
+       MONERO_CHECK(check_cursor(txn, this->db->tables.subaddress_indexes, indexes_cur));
+ 
++      cursor::accounts_by_address by_address;
++      MONERO_CHECK(check_cursor(txn, this->db->tables.accounts_ba, by_address));
++      MDB_val key = lmdb::to_val(by_address_version), value = lmdb::to_val(address);
++      const int found = mdb_cursor_get(by_address.get(), &key, &value, MDB_GET_BOTH);
++      if (found == MDB_NOTFOUND) return {lws::error::account_not_found};
++      MLWS_LMDB_CHECK(found);
++      const auto lookup = accounts_by_address.get_value<MONERO_FIELD(account_by_address, lookup)>(value);
++      if (!lookup) return lookup.error();
++      if (lookup->id != id) return {lws::error::account_not_found};
+       return do_upsert(*ranges_cur, *indexes_cur, id, address, view_key, subaddrs, max_subaddr);
+     });
+   }
+@@ -3614,5 +3715,249 @@
+        return success();
+      });
+    }
++  namespace
++  {
++    bool same_address(const account_address& left, const account_address& right)
++    {
++      return left.view_public == right.view_public && left.spend_public == right.spend_public;
++    }
++
++    expect<void> check_delete_key(const account_address& address, const crypto::secret_key& key)
++    {
++      crypto::public_key actual{};
++      if (!crypto::secret_key_to_public_key(key, actual) || actual != address.view_public)
++        return {lws::error::bad_view_key};
++      return success();
++    }
++
++    // A missing account may still have a queued creation containing a view key.
++    expect<bool> has_registration(MDB_txn& txn, const storage_internal::tables_& tables, const account_address& address)
++    {
++      cursor::accounts_by_address cur;
++      MONERO_CHECK(check_cursor(txn, tables.accounts_ba, cur));
++      MDB_val key = lmdb::to_val(by_address_version), value = lmdb::to_val(address);
++      const int found = mdb_cursor_get(cur.get(), &key, &value, MDB_GET_BOTH);
++      if (!found)
++      {
++        const auto entry = accounts_by_address.get_value<account_by_address>(value);
++        if (!entry) return entry.error();
++        return same_address(entry->address, address);
++      }
++      if (found != MDB_NOTFOUND) return log_lmdb_error(found, __LINE__, __FILE__);
++      cursor::requests req;
++      MONERO_CHECK(check_cursor(txn, tables.requests, req));
++      const request create = request::create;
++      key = lmdb::to_val(create); value = lmdb::to_val(address);
++      const int pending = mdb_cursor_get(req.get(), &key, &value, MDB_GET_BOTH);
++      if (pending == MDB_NOTFOUND) return false;
++      MLWS_LMDB_CHECK(pending);
++      const auto entry = requests.get_value<request_info>(value);
++      if (!entry) return entry.error();
++      return same_address(entry->address, address);
++    }
++
++    // Each batch commits a bounded amount of work. A durable queue row remains
++    // until every index is gone, so restart resumes rather than acknowledging
++    // a partial cleanup as complete. No view key is stored in this queue.
++    template<typename K>
++    expect<bool> erase_batch(MDB_txn& txn, MDB_dbi table, const K& owner, std::size_t& budget)
++    {
++      cursor::outputs cur;
++      MONERO_CHECK(check_cursor(txn, table, cur));
++      MDB_val key = lmdb::to_val(owner), value{};
++      for (;;)
++      {
++        key = lmdb::to_val(owner);
++        const int found = mdb_cursor_get(cur.get(), &key, &value, MDB_SET_KEY);
++        if (found == MDB_NOTFOUND) return true;
++        MLWS_LMDB_CHECK(found);
++        if (!budget) return false;
++        MLWS_LMDB_CHECK(mdb_cursor_del(cur.get(), 0));
++        --budget;
++      }
++    }
++
++    expect<bool> erase_spends_batch(MDB_txn& txn, const storage_internal::tables_& tables, account_id id, std::size_t& budget)
++    {
++      cursor::spends cur;
++      cursor::images image_cur;
++      MONERO_CHECK(check_cursor(txn, tables.spends, cur));
++      MONERO_CHECK(check_cursor(txn, tables.images, image_cur));
++      MDB_val key = lmdb::to_val(id), value{};
++      for (;;)
++      {
++        key = lmdb::to_val(id);
++        const int found = mdb_cursor_get(cur.get(), &key, &value, MDB_SET_KEY);
++        if (found == MDB_NOTFOUND) return true;
++        MLWS_LMDB_CHECK(found);
++        if (!budget) return false;
++        const auto entry = spends.get_value<spend>(value);
++        if (!entry) return entry.error();
++        MONERO_CHECK(remove_image_reference(*image_cur, id, *entry));
++        MLWS_LMDB_CHECK(mdb_cursor_del(cur.get(), 0));
++        --budget;
++      }
++    }
++
++    expect<bool> cleanup_one(MDB_txn& txn, const storage_internal::tables_& tables, const crypto::hash& token, std::size_t budget)
++    {
++      MDB_val queue_key = lmdb::to_val(token), queue_value{};
++      const int found = mdb_get(&txn, tables.deletion_queue, &queue_key, &queue_value);
++      if (found == MDB_NOTFOUND) return true;
++      MLWS_LMDB_CHECK(found);
++      const auto queued = deletion_queue.get_value<deletion_entry>(queue_value);
++      if (!queued) return queued.error();
++      const auto spent = erase_spends_batch(txn, tables, queued->id, budget);
++      if (!spent || !*spent) return spent;
++      for (const auto table : {tables.outputs, tables.events, tables.subaddress_ranges, tables.subaddress_indexes})
++      {
++        const auto done = erase_batch(txn, table, queued->id, budget);
++        if (!done || !*done) return done;
++      }
++      for (const auto type : {webhook_type::tx_confirmation, webhook_type::new_account, webhook_type::tx_spend})
++      {
++        const webhook_key hook{queued->id, type, {0, 0, 0}};
++        const auto done = erase_batch(txn, tables.webhooks, hook, budget);
++        if (!done || !*done) return done;
++      }
++      MLWS_LMDB_CHECK(mdb_del(&txn, tables.deletion_queue, &queue_key, nullptr));
++      return true;
++    }
++
++    expect<void> unlink_registration(MDB_txn& txn, const storage_internal::tables_& tables, const account_address& address, const crypto::hash& token)
++    {
++      cursor::accounts_by_address ba;
++      cursor::accounts_by_height bh;
++      cursor::accounts ac;
++      cursor::requests req;
++      MONERO_CHECK(check_cursor(txn, tables.accounts_ba, ba));
++      MONERO_CHECK(check_cursor(txn, tables.accounts_bh, bh));
++      MONERO_CHECK(check_cursor(txn, tables.accounts, ac));
++      MONERO_CHECK(check_cursor(txn, tables.requests, req));
++      MDB_val key = lmdb::to_val(by_address_version), value = lmdb::to_val(address);
++      const int found = mdb_cursor_get(ba.get(), &key, &value, MDB_GET_BOTH);
++      if (!found)
++      {
++        const auto lookup = accounts_by_address.get_value<MONERO_FIELD(account_by_address, lookup)>(value);
++        if (!lookup) return lookup.error();
++        key = lmdb::to_val(lookup->status); value = lmdb::to_val(lookup->id);
++        MLWS_LMDB_CHECK(mdb_cursor_get(ac.get(), &key, &value, MDB_GET_BOTH));
++        const auto user = accounts.get_value<account>(value);
++        if (!user) return user.error();
++        if (!same_address(user->address, address)) return {lws::error::bad_view_key};
++        // Administrative credentials are outside the wallet deletion API.
++        if (user->flags & account_flags::admin_account) return {lws::error::bad_view_key};
++        const deletion_entry queued{user->id, address};
++        key = lmdb::to_val(token); value = lmdb::to_val(queued);
++        MLWS_LMDB_CHECK(mdb_put(&txn, tables.deletion_queue, &key, &value, MDB_NOOVERWRITE));
++        MLWS_LMDB_CHECK(mdb_cursor_del(ac.get(), 0));
++        key = lmdb::to_val(user->scan_height); value = lmdb::to_val(user->id);
++        MLWS_LMDB_CHECK(mdb_cursor_get(bh.get(), &key, &value, MDB_GET_BOTH));
++        MLWS_LMDB_CHECK(mdb_cursor_del(bh.get(), 0));
++        MLWS_LMDB_CHECK(mdb_cursor_del(ba.get(), 0));
++      }
++      else if (found != MDB_NOTFOUND) return log_lmdb_error(found, __LINE__, __FILE__);
++      for (const auto type : {request::create, request::import_scan})
++      {
++        key = lmdb::to_val(type); value = lmdb::to_val(address);
++        const int pending = mdb_cursor_get(req.get(), &key, &value, MDB_GET_BOTH);
++        if (!pending) { MLWS_LMDB_CHECK(mdb_cursor_del(req.get(), 0)); }
++        else if (pending != MDB_NOTFOUND) return log_lmdb_error(pending, __LINE__, __FILE__);
++      }
++      return success();
++    }
++  }
++
++  expect<crypto::hash> storage::prepare_account_delete(const account_address& address, const crypto::secret_key& key)
++  {
++    MONERO_CHECK(check_delete_key(address, key));
++    return db->try_write([this, &address] (MDB_txn& txn) -> expect<crypto::hash>
++    {
++      const auto exists = has_registration(txn, db->tables, address);
++      if (!exists) return exists.error();
++      if (!*exists) return {lws::error::account_not_found};
++      cursor::outputs cur;
++      MONERO_CHECK(check_cursor(txn, db->tables.delete_tokens, cur));
++      const unsigned version = 1;
++      MDB_val k = lmdb::to_val(version), v = lmdb::to_val(address);
++      const int found = mdb_cursor_get(cur.get(), &k, &v, MDB_GET_BOTH);
++      if (!found)
++      {
++        const auto issued = delete_tokens.get_value<delete_token>(v);
++        if (!issued) return issued.error();
++        if (!same_address(issued->address, address)) return {lws::error::bad_view_key};
++        return issued->token;
++      }
++      if (found != MDB_NOTFOUND) return log_lmdb_error(found, __LINE__, __FILE__);
++      const delete_token issued{address, crypto::rand<crypto::hash>()};
++      v = lmdb::to_val(issued);
++      MLWS_LMDB_CHECK(mdb_cursor_put(cur.get(), &k, &v, MDB_NODUPDATA));
++      return issued.token;
++    });
++  }
++
++  expect<bool> storage::delete_account(const account_address& address, const crypto::secret_key& key, const crypto::hash& token)
++  {
++    MONERO_CHECK(check_delete_key(address, key));
++    // Authentication, generation check, key removal and durable queue insertion
++    // are one writer transaction. A failed commit cannot report success.
++    const auto begun = db->try_write([this, &address, &token] (MDB_txn& txn) -> expect<void>
++    {
++      MDB_val k = lmdb::to_val(token), v{};
++      const int queued = mdb_get(&txn, db->tables.deletion_queue, &k, &v);
++      if (!queued)
++      {
++        const auto entry = deletion_queue.get_value<deletion_entry>(v);
++        if (!entry) return entry.error();
++        if (!same_address(entry->address, address)) return {lws::error::bad_view_key};
++        return success();
++      }
++      if (queued != MDB_NOTFOUND) return log_lmdb_error(queued, __LINE__, __FILE__);
++      cursor::outputs cur;
++      MONERO_CHECK(check_cursor(txn, db->tables.delete_tokens, cur));
++      const unsigned version = 1;
++      k = lmdb::to_val(version); v = lmdb::to_val(address);
++      const int found = mdb_cursor_get(cur.get(), &k, &v, MDB_GET_BOTH);
++      if (found == MDB_NOTFOUND)
++      {
++        const auto exists = has_registration(txn, db->tables, address);
++        if (!exists) return exists.error();
++        if (*exists) return {lws::error::bad_view_key};
++        return success(); // already absent, authenticated idempotent retry
++      }
++      MLWS_LMDB_CHECK(found);
++      const auto issued = delete_tokens.get_value<delete_token>(v);
++      if (!issued) return issued.error();
++      if (!same_address(issued->address, address) || issued->token != token)
++        return {lws::error::bad_view_key};
++      MONERO_CHECK(unlink_registration(txn, db->tables, address, token));
++      MLWS_LMDB_CHECK(mdb_cursor_del(cur.get(), 0));
++      return success();
++    });
++    if (!begun) return begun.error();
++    return db->try_write([this, &token] (MDB_txn& txn) -> expect<bool>
++    {
++      return cleanup_one(txn, db->tables, token, 256);
++    });
++  }
++
++  expect<void> storage::cleanup_deleted_accounts()
++  {
++    return db->try_write([this] (MDB_txn& txn) -> expect<void>
++    {
++      cursor::outputs cur;
++      MONERO_CHECK(check_cursor(txn, db->tables.deletion_queue, cur));
++      MDB_val k{}, v{};
++      const int found = mdb_cursor_get(cur.get(), &k, &v, MDB_FIRST);
++      if (found == MDB_NOTFOUND) return success();
++      MLWS_LMDB_CHECK(found);
++      crypto::hash token{};
++      if (k.mv_size != sizeof(token)) return {lmdb::error(MDB_CORRUPTED)};
++      std::memcpy(&token, k.mv_data, sizeof(token));
++      const auto done = cleanup_one(txn, db->tables, token, 256);
++      if (!done) return done.error();
++      return success();
++    });
++  }
+ } // db
+ } // lws
+--- a/src/db/storage.h
++++ b/src/db/storage.h
+@@ -250,6 +250,12 @@
+     //! Add an account, for immediate inclusion in the active list.
+     expect<void> add_account(account_address const& address, crypto::secret_key const& key, account_flags flags = account_flags::default_account) noexcept;
+ 
++    //! Authenticated, registration-scoped deletion. False means cleanup pending.
++    expect<crypto::hash> prepare_account_delete(const account_address&, const crypto::secret_key&);
++    expect<bool> delete_account(const account_address&, const crypto::secret_key&, const crypto::hash&);
++    //! Resume one durable cleanup batch (at most 256 account-scoped records).
++    expect<void> cleanup_deleted_accounts();
++
+     //! Reset `addresses` to `height` for scanning.
+     expect<std::vector<account_address>>
+       rescan(block_id height, epee::span<const account_address> addresses);
+--- a/src/mempool.h
++++ b/src/mempool.h
+@@ -80,6 +80,9 @@
+     //! Replaces all transactions to the pool. Thread-safe.
+     void reset_txs(pool_table&&);
+ 
++    //! Drop account-associated cache entries and fence in-flight cache writes.
++    void forget_account(const db::account_address& address);
++
+     //! Scans the pool for transactions belonging to an address. Thread-safe.
+     std::vector<found_pool_tx> scan_account(lws::account& user) const;
+ 
+@@ -91,6 +94,7 @@
+     public:
+       std::unordered_set<crypto::hash> get(const db::account_address& address) const;
+       void set(const db::account_address& address, std::vector<crypto::hash>&& txids);
++      void erase(const db::account_address& address);
+ 
+     private:
+       struct entry
+@@ -105,6 +109,7 @@
+ 
+     pool_table state_;
+     mutable address_cache cache_;
++    std::uint64_t cache_generation_ = 0;
+     mutable std::shared_ptr<const pool_snapshot> snapshot_;
+     mutable boost::mutex mutex_;
+   };
+--- a/src/mempool.cpp
++++ b/src/mempool.cpp
+@@ -99,12 +99,29 @@
+       order_.splice(order_.begin(), order_, e.order);
+   }
+ 
++  void mempool::address_cache::erase(const db::account_address& address)
++  {
++    const auto found = map_.find(address);
++    if (found == map_.end()) return;
++    order_.erase(found->second.order);
++    map_.erase(found);
++  }
++
++  void mempool::forget_account(const db::account_address& address)
++  {
++    const boost::lock_guard<boost::mutex> lock{mutex_};
++    ++cache_generation_;
++    cache_.erase(address);
++  }
++
+   std::vector<found_pool_tx> mempool::scan_account(lws::account& user) const
+   {
+     std::unordered_set<crypto::hash> skip;
++    std::uint64_t generation = 0;
+     std::shared_ptr<const pool_snapshot> snapshot;
+     {
+       const boost::lock_guard<boost::mutex> lock{mutex_};
++      generation = cache_generation_;
+       skip = cache_.get(user.db_address());
+ 
+       if (!snapshot_)
+@@ -156,7 +173,8 @@
+ 
+     {
+       const boost::lock_guard<boost::mutex> lock{mutex_};
+-      cache_.set(user.db_address(), std::move(skipped));
++      if (generation == cache_generation_)
++        cache_.set(user.db_address(), std::move(skipped));
+     }
+ 
+     return found;
+--- a/src/rpc/light_wallet.h
++++ b/src/rpc/light_wallet.h
+@@ -71,6 +71,17 @@
+   void read_bytes(wire::reader&, account_credentials&);
+ 
+ 
++  struct delete_account_request
++  {
++    account_credentials creds;
++    crypto::hash token;
++  };
++  void read_bytes(wire::json_reader&, delete_account_request&);
++  struct prepare_account_delete_response { crypto::hash token; };
++  void write_bytes(wire::json_writer&, const prepare_account_delete_response&);
++  struct delete_account_response { bool complete; };
++  void write_bytes(wire::json_writer&, const delete_account_response&);
++
+   enum class daemon_state : std::uint8_t
+   {
+     ok = 0,
+--- a/src/rpc/light_wallet.cpp
++++ b/src/rpc/light_wallet.cpp
+@@ -211,6 +211,25 @@
+     convert_address(address, self.address);
+   }
+ 
++  void rpc::read_bytes(wire::json_reader& source, delete_account_request& self)
++  {
++    std::string address;
++    wire::object(source,
++      wire::field("address", std::ref(address)),
++      wire::field("view_key", std::ref(unwrap(unwrap(self.creds.key)))),
++      WIRE_FIELD(token)
++    );
++    convert_address(address, self.creds.address);
++  }
++  void rpc::write_bytes(wire::json_writer& dest, const prepare_account_delete_response& self)
++  {
++    wire::object(dest, WIRE_FIELD(token));
++  }
++  void rpc::write_bytes(wire::json_writer& dest, const delete_account_response& self)
++  {
++    wire::object(dest, WIRE_FIELD(complete));
++  }
++
+   namespace rpc
+   {
+     daemon_status_response::daemon_status_response()
+--- a/src/rest_server.cpp
++++ b/src/rest_server.cpp
+@@ -1778,6 +1778,32 @@
+       return epee::byte_slice{dest.take_sink()};
+     }
+ 
++    struct prepare_account_delete
++    {
++      using request = rpc::account_credentials;
++      using response = rpc::prepare_account_delete_response;
++      static expect<response> handle(const request& req, connection_data& data, std::function<async_complete>&&)
++      {
++        auto disk = data.global->disk.clone();
++        const auto token = disk.prepare_account_delete(req.address, req.key);
++        if (!token) return token.error();
++        return response{*token};
++      }
++    };
++    struct delete_account
++    {
++      using request = rpc::delete_account_request;
++      using response = rpc::delete_account_response;
++      static expect<response> handle(const request& req, connection_data& data, std::function<async_complete>&&)
++      {
++        auto disk = data.global->disk.clone();
++        const auto done = disk.delete_account(req.creds.address, req.creds.key, req.token);
++        if (!done) return done.error();
++        if (data.global->mempool) data.global->mempool->forget_account(req.creds.address);
++        return response{*done};
++      }
++    };
++
+     struct endpoint
+     {
+       char const* const name;
+@@ -1797,6 +1823,7 @@
+     constexpr const endpoint endpoints[] =
+     {
+       {"/daemon_status",         call<daemon_status>,          1024,  true},
++      {"/delete_account",        call<delete_account>,     2 * 1024, false},
+       {"/feed",                  nullptr,                         0, false},
+       {"/get_address_info",      call<get_address_info>,   2 * 1024, false},
+       {"/get_address_txs",       call<get_address_txs>,    2 * 1024, false},
+@@ -1807,6 +1834,7 @@
+       {"/get_version",           call<get_version>,            1024, false},
+       {"/import_wallet_request", call<import_request>,     2 * 1024, false},
+       {"/login",                 call<login>,              2 * 1024, false},
++      {"/prepare_account_delete",call<prepare_account_delete>, 2 * 1024, false},
+       {"/provision_subaddrs",    call<provision_subaddrs>, 2 * 1024, false},
+       {"/submit_raw_tx",         call<submit_raw_tx>,    512 * 1024,  true},
+       {"/upsert_subaddrs",       call<upsert_subaddrs>,   10 * 1024, false}
+--- a/src/rpc/scanner/server.cpp
++++ b/src/rpc/scanner/server.cpp
+@@ -236,6 +236,8 @@
+       assert(self_->strand_.running_in_this_thread());
+       self_->check_timer_.expires_after(account_poll_interval);
+       self_->check_timer_.async_wait(boost::asio::bind_executor(self_->strand_, *this));
++
++      MONERO_UNWRAP(self_->disk_.cleanup_deleted_accounts());
+ 
+       std::size_t total_threads = self_->local_.size();
+       std::vector<std::shared_ptr<server_connection>> remotes{};
+--- a/src/scanner.cpp
++++ b/src/scanner.cpp
+@@ -1344,6 +1344,7 @@
+ 
+     for (;;)
+     {
++      MONERO_UNWRAP(disk_.cleanup_deleted_accounts());
+       std::vector<db::account_id> active;
+       std::vector<lws::account> users;
+ 
+--- a/tests/unit/db/CMakeLists.txt
++++ b/tests/unit/db/CMakeLists.txt
+@@ -28,6 +28,7 @@
+ 
+ add_library(monero-lws-unit-db OBJECT
+   account.test.cpp
++  deletion.test.cpp
+   chain.test.cpp
+   data.test.cpp
+   storage.test.cpp
+--- a/tests/unit/db/storage.test.cpp
++++ b/tests/unit/db/storage.test.cpp
+@@ -27,6 +27,7 @@
+ 
+ 
+ #include "storage.test.h"
++#include <cstdlib>
+ 
+ #include <boost/filesystem/operations.hpp>
+ #include "common/util.h"   // monero/src/
+@@ -40,6 +41,7 @@
+   {
+     boost::filesystem::path get_db_location()
+     {
++      if (const char* path = std::getenv("LWS_TEST_DATABASE")) return path;
+       return tools::get_default_data_dir() + "light_wallet_server_unit_testing";
+     }
+   }
+--- a/tests/unit/CMakeLists.txt
++++ b/tests/unit/CMakeLists.txt
+@@ -56,3 +56,8 @@
+   Threads::Threads
+ )
+ add_test(NAME monero-lws-unit COMMAND monero-lws-unit -v)
++
++# Disposable project storage validation; not a service entry point.
++add_executable(wallet-lws-storage-probe storage-probe.cpp)
++target_include_directories(wallet-lws-storage-probe PRIVATE "${CMAKE_SOURCE_DIR}/src")
++target_link_libraries(wallet-lws-storage-probe monero-lws-db monero-lws-wire-json monero::libraries)
+--- a/tests/unit/rest.test.cpp
++++ b/tests/unit/rest.test.cpp
+@@ -225,6 +225,28 @@
+ 
+     auto account = get_account();
+     EXPECT(account.id == lws::db::account_id(1));
++
++    SECTION("Authenticated account deletion and replay")
++    {
++      const std::string credentials = "{\"address\":\"" + address + "\",\"view_key\":\"" + viewkey + "\"}";
++      rapidjson::Document prepared;
++      const auto prepared_json = invoke(client, "/prepare_account_delete", credentials);
++      prepared.Parse(prepared_json.data(), prepared_json.size());
++      EXPECT(!prepared.HasParseError());
++      EXPECT(prepared["token"].IsString());
++      const std::string token = prepared["token"].GetString();
++      EXPECT(token.size() == 64u);
++      const std::string request = "{\"address\":\"" + address + "\",\"view_key\":\"" + viewkey + "\",\"token\":\"" + token + "\"}";
++      EXPECT(invoke_base(client, "/delete_account", credentials).second != 200u);
++      const std::string wrong = "{\"address\":\"" + address + "\",\"view_key\":\"" + std::string(64, '0') + "\",\"token\":\"" + token + "\"}";
++      EXPECT(invoke_base(client, "/delete_account", wrong).second != 200u);
++      EXPECT(invoke(client, "/delete_account", request) == "{\"complete\":true}");
++      EXPECT(invoke(client, "/delete_account", request) == "{\"complete\":true}");
++      EXPECT(invoke_base(client, "/get_address_info", credentials).second != 200u);
++      invoke(client, "/login", message);
++      EXPECT(invoke_base(client, "/delete_account", request).second != 200u);
++      EXPECT(invoke_base(client, "/get_address_info", credentials).second == 200u);
++    }
+ 
+     SECTION("Empty Account")
+     {
+--- a/tests/unit/scanner.test.cpp
++++ b/tests/unit/scanner.test.cpp
+@@ -536,26 +536,6 @@
+ 
+     SECTION("lws::scanner::run (with upsert)")
+     {
+-      {
+-        const std::vector<lws::db::subaddress_dict> indexes{
+-          lws::db::subaddress_dict{
+-            lws::db::major_index::primary,
+-            lws::db::index_ranges{
+-              {lws::db::index_range{lws::db::minor_index(1), lws::db::minor_index(2)}}
+-            }
+-          }
+-        };
+-        const auto result =
+-          db.upsert_subaddresses(lws::db::account_id(1), account, keys.m_view_secret_key, indexes, 2);
+-        EXPECT(result);
+-        EXPECT(result->size() == 1);
+-        EXPECT(result->at(0).first == lws::db::major_index::primary);
+-        EXPECT(result->at(0).second.get_container().size() == 1);
+-        EXPECT(result->at(0).second.get_container().at(0).size() == 2);
+-        EXPECT(result->at(0).second.get_container().at(0).at(0) == lws::db::minor_index(1));
+-        EXPECT(result->at(0).second.get_container().at(0).at(1) == lws::db::minor_index(2));
+-      }
+-
+       std::vector<cryptonote::tx_destination_entry> destinations;
+       destinations.emplace_back();
+       destinations.back().amount = 8000;
+@@ -647,6 +627,27 @@
+ 
+       EXPECT(db.add_account(account, keys.m_view_secret_key));
+       EXPECT(db.add_account(account2, keys2.m_view_secret_key));
++
++      {
++        const std::vector<lws::db::subaddress_dict> indexes{
++          lws::db::subaddress_dict{
++            lws::db::major_index::primary,
++            lws::db::index_ranges{
++              {lws::db::index_range{lws::db::minor_index(1), lws::db::minor_index(2)}}
++            }
++          }
++        };
++        const auto result =
++          db.upsert_subaddresses(lws::db::account_id(1), account, keys.m_view_secret_key, indexes, 2);
++        EXPECT(result);
++        EXPECT(result->size() == 1);
++        EXPECT(result->at(0).first == lws::db::major_index::primary);
++        EXPECT(result->at(0).second.get_container().size() == 1);
++        EXPECT(result->at(0).second.get_container().at(0).size() == 2);
++        EXPECT(result->at(0).second.get_container().at(0).at(0) == lws::db::minor_index(1));
++        EXPECT(result->at(0).second.get_container().at(0).at(1) == lws::db::minor_index(2));
++      }
++
+ 
+       messages.clear();
+       messages.push_back(daemon_response(bmessage));

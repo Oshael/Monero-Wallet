@@ -1,0 +1,8 @@
+# Build the existing native image first using experiments/wallet-mv3/Dockerfile.native.
+ARG NATIVE_BUILD_IMAGE=wallet-native-build:43052c3
+FROM ${NATIVE_BUILD_IMAGE}
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libboost-context-dev libboost-coroutine-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /lws

@@ -14,3 +14,4 @@ experiments/wallet-mv3/source/
 experiments/wallet-mv3/extension/
 experiments/wallet-mv3/run-*/
 experiments/wallet-mv3/rpc-run-*/
+experiments/lws/authenticated-deletion.patch

@@ -1,22 +1,29 @@
 # Light service delivery decisions
 
-Status: proposed, not an approved persistent deployment. The client integration
+Status: server-extension and manual-unlock storage routes approved on 2026-11-08;
+public deployment and retention policy remain unapproved. The client integration
 and disposable tests are complete independently of this service decision. The
 server candidate remains pinned to the revision in
 [the adoption record](LIGHT_WALLET_ADOPTION.md).
 
 ## Protected persistence
 
-The isolated LUKS2 test established format/open/mount/reopen/cleanup feasibility.
-It did not provision persistent service storage or define recovery key custody.
+The initial isolated LUKS2 test established format/open/mount/reopen/cleanup
+feasibility. The subsequent approved persistent test provisioned a new private
+4 GiB image, recovered a disposable scanner database after closing/reopening the
+volume, deleted its registration and rejected replay against a new registration.
+The volume was left closed. The owner-only recovery key and header copy are on
+the owner's local machine; an offline owner-held copy still requires handoff.
 The scanner database contains private view keys and cannot be placed on an
 unencrypted persistent path. The project scanner must use a private encrypted
 filesystem, project-specific service identity, no payload/key logging and a
 scoped backup/recovery policy. The selected node has no spend authority.
 
-The recommended first persistent test setup uses a new project-only LUKS2 image,
+The owner approved a first isolated persistent setup using a new project-only LUKS2 image,
 manual operator unlocking after reboot and an offline recovery key held by the
-owner. The scanner refuses to start when that filesystem is not mounted.
+owner. The test preflight rejects an unmounted/plaintext fallback. Any future
+service startup workflow must enforce that preflight; no persistent scanner
+service or boot integration is installed by these tests.
 An encrypted image is not its own backup. No automatic startup, system package,
 shared service, firewall or existing partition change is implied.
 
@@ -24,7 +31,8 @@ An unattended unlock key on the same host improves restart availability but
 weakens protection against host/disk compromise. External key custody adds an
 additional service, access policy, outage dependency and possibly cost. Neither
 alternative is selected. Mounted data is readable to host root in all cases.
-The owner must choose recovery custody and restart behavior before provisioning.
+Manual unlock after reboot and owner-held recovery custody are selected. Secure
+key handoff and recovery verification must precede storing non-disposable keys.
 
 ## Retention and deletion gap
 
@@ -38,17 +46,33 @@ support it.
 
 Do not promise deletion by hiding an account or silently adopt indefinite
 retention. No persistent multi-user service is activated until this gap and the
-owner's retention policy are resolved. The temporary scanner test uses tmpfs,
-contains only disposable accounts, and is destroyed after validation.
+owner's retention policy are resolved. Earlier temporary scanners used tmpfs and
+were stopped after validation. The new encrypted volume contains only disposable
+test data, with no real wallet registration or balance.
 
-Recommended route: maintain a small server-side patch on the pinned LWS candidate
+Approved route (owner decision, 2026-11-08): maintain a small server-side patch on the pinned LWS candidate
 for authenticated account deletion, bounded database cleanup, key removal and
 consistent scanner cancellation. Authentication must prove control of the
 wallet's private view key to that chosen scanner; the spend key never leaves
-the client. Design replay resistance, concurrent scan/delete behavior,
-re-registration and backup expiry explicitly before implementation. No new
-cryptographic primitive is proposed; verify supported upstream authentication
-mechanisms before selecting an implementation.
+the client. The implementation uses upstream Monero view-key validation and a
+random registration-scoped deletion token. It removes live credentials atomically,
+cleans indexes in bounded batches, resumes cleanup after restart and prevents
+stale scan writes/old-token deletion of a new registration. See the
+[protocol and test recipe](../experiments/lws/README.md). No new cryptographic
+primitive is introduced. Backup expiry remains an owner decision.
+
+The 24-case native suite passed, including authenticated deletion, pending
+creation rejection, concurrent scan commits, restart, shared image references,
+bounded cleanup and HTTP replay. The same affected contracts passed with the
+test database on the encrypted mount under an unprivileged numeric identity.
+Source application checks, shell syntax and ELF non-executable stacks passed.
+The browser action for deletion and its durable uncertain-result handling still
+need integration; the current client may register again when sync is started.
+
+`complete:true` describes live database cleanup, not forensic erasure. LMDB
+copy-on-write/free pages, filesystem/provider snapshots or older backups can
+retain bytes. LUKS2 protects the closed volume, not data from host root while
+mounted. Neither immediate physical erasure nor backup expiry is promised.
 
 The proposed policy retains scanning state while the account is registered,
 allows owner-requested deletion and has no automatic inactivity expiry. A
@@ -58,7 +82,7 @@ and the meaning/timing of deletion must be selected with the owner; removing a
 live LMDB row alone cannot erase an older backup or revoke a previously shared
 view key. Neither proposed retention policy is approved by this document.
 
-Alternative route: evaluate another compatible server with the needed deletion
+Unselected alternative: evaluate another compatible server with the needed deletion
 contract. This requires license/maintenance review and repeats subaddress,
 RingCT, signing, malformed-response, migration and operational tests. It may
 avoid a maintained server patch but no compatible replacement is established.

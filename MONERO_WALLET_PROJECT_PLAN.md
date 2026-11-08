@@ -51,9 +51,12 @@ when importing an old backup; the chosen service and its privacy boundary must
 be explicit. Server-side sensitive state still requires encryption at rest.
 The owner subsequently selected extending the existing maintained engine and
 approved an isolated LUKS2 test with a new image of at most 4 GiB, including
-`dm_crypt` loading if needed and only that test mount. Retention, account deletion,
-production encryption/key management and public deployment remain unresolved
-delivery details. The model decision
+`dm_crypt` loading if needed and only that test mount. On 2026-11-08 the owner
+approved extending the pinned LWS build with authenticated deletion and a first
+isolated persistent LUKS2 volume with manual unlocking after reboot and owner-held
+recovery custody. Retention duration, backup expiry, recovery handoff and public
+deployment remain unresolved delivery details. See the
+[service delivery record](docs/LIGHT_SERVICE_DELIVERY.md). The model decision
 does not approve plaintext persistence, new fees or replacement cryptography.
 
 ### Recommendations, not yet approved implementation decisions

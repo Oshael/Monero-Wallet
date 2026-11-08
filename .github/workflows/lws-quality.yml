@@ -1,0 +1,56 @@
+name: LWS quality
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'experiments/lws/**'
+      - '.github/workflows/lws-quality.yml'
+  pull_request:
+    paths:
+      - 'experiments/lws/**'
+      - '.github/workflows/lws-quality.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      BUILD_JOBS: 2
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install native build dependencies on the ephemeral runner
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential ca-certificates cmake git pkg-config \
+            libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind-dev \
+            liblzma-dev libreadline-dev libexpat1-dev libpgm-dev libhidapi-dev \
+            libusb-1.0-0-dev libprotobuf-dev protobuf-compiler libudev-dev \
+            libboost-chrono-dev libboost-date-time-dev libboost-filesystem-dev \
+            libboost-locale-dev libboost-program-options-dev libboost-regex-dev \
+            libboost-serialization-dev libboost-system-dev libboost-thread-dev \
+            libboost-context-dev libboost-coroutine-dev
+      - name: Prepare the pinned upstream and project patch
+        run: |
+          git clone --no-checkout https://github.com/vtnerd/monero-lws.git "$RUNNER_TEMP/lws-source"
+          git -C "$RUNNER_TEMP/lws-source" checkout --detach e70630140be66ac80b990df8221063ae7f28499c
+          git -C "$RUNNER_TEMP/lws-source" submodule update --init --recursive
+          bash experiments/lws/prepare-source.sh "$RUNNER_TEMP/lws-source"
+      - name: Build, test and inspect native binaries
+        env:
+          LWS_TEST_DATABASE: ${{ runner.temp }}/lws-unit-database
+        run: bash experiments/lws/build-and-test.sh "$RUNNER_TEMP/lws-source"
+      - name: Reject an unmounted database path
+        run: |
+          mkdir "$RUNNER_TEMP/unmounted-scanner"
+          chmod 700 "$RUNNER_TEMP/unmounted-scanner"
+          if bash experiments/lws/check-protected-mount.sh "$RUNNER_TEMP/unmounted-scanner" absent-scanner-volume; then
+            echo 'Protected-storage preflight accepted an unmounted path' >&2
+            exit 1
+          fi

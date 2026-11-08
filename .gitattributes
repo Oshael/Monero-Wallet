@@ -7,3 +7,4 @@ experiments/wallet-mv3/worker-light-build.patch whitespace=-blank-at-eol
 experiments/wallet-mv3/native-light-build.patch whitespace=-blank-at-eol
 experiments/wallet-mv3/native-light-core.patch whitespace=-blank-at-eol
 experiments/wallet-mv3/native-light-wallet.patch whitespace=-blank-at-eol
+experiments/lws/authenticated-deletion.patch whitespace=-blank-at-eol

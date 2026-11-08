@@ -22,6 +22,14 @@ recovery remains required.
 
 ## Ownership and implementation boundaries
 
+On 2026-11-08 the owner approved extending the pinned LWS build with
+authenticated account deletion, accepting the scoped maintenance and review
+responsibility. The owner also approved isolated persistent LUKS2 storage with
+manual unlocking after reboot and owner-held recovery custody. These decisions
+do not authorize public service deployment, select automatic retention or backup
+expiry, or establish an independently audited release. See
+[the service delivery record](LIGHT_SERVICE_DELIVERY.md).
+
 - The browser engine owns secret spend authority, transaction construction,
   local inspection and signing. It must validate untrusted scanner results.
 - A light-wallet client transport owns bounded requests, explicit endpoint
