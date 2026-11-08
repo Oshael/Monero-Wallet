@@ -1,7 +1,9 @@
 # Isolated LWS deletion extension
 
 This is build/test source for the owner-approved server extension. It installs
-no host service, opens no public port and selects no retention or backup policy.
+no host service and opens no public port. The owner selected retention until
+requested deletion, no inactivity expiry and no scanner database backup in the
+first stage.
 It is not a public release or an independently reviewed security boundary.
 
 ## Source and dependencies
@@ -44,7 +46,9 @@ key is shared; no seed, private spend key or client key image is accepted.
    generation validation, removal of account/request view keys and indexes,
    token consumption and durable cleanup enqueue are one writer transaction.
 4. `{complete:false}` means live credentials are removed but index cleanup is
-   pending. Retry the same token; never report complete deletion on a timeout
+   pending. Unknown tokens cannot acknowledge completion while that address has
+   pending cleanup. Retry the same token; never report complete deletion on a
+   timeout
    or transport failure. `{complete:true}` means the live database cleanup is
    complete. Background cleanup resumes after restart without client requests.
 5. Re-registration needs a fresh authorization before another deletion. A
@@ -67,12 +71,14 @@ started; server deletion must therefore not be presented as a finished app flow.
 ## Database compatibility
 
 The fork adds versioned tables for the ID counter, deletion authorizations,
-cleanup queue and shared image references. First use requires an empty upstream
+cleanup queue with its per-address pending index, and shared image references.
+First use requires an empty upstream
 account/request/output/spend/image/subaddress database. Non-empty upstream data
 is rejected; no automatic migration or real-account data conversion is provided.
 Fork databases must not be opened by an upstream binary that ignores these
 invariants. Rollback uses the matching binary and an approved matching encrypted
-snapshot, never a binary-only downgrade. No scanner backup policy is approved.
+snapshot, never a binary-only downgrade. The selected first stage has no scanner
+database backup.
 
 ## Protected storage tests
 
@@ -96,6 +102,7 @@ Copy-on-write/free pages, filesystem snapshots, host storage and old backups can
 retain bytes. A mounted volume remains readable to host root. LUKS2 protects the
 closed volume; it cannot revoke one account's key or retract knowledge already
 learned by an operator. No immediate forensic-erasure or backup-expiry guarantee
-is made. Select retention, backup expiry and maintenance before non-disposable
-or public use. Keep infrastructure inventories, paths, credentials and evidence
+is made. The selected first stage has no database backups and retains
+registrations until requested deletion. Complete client deletion, key handoff and
+service review before non-disposable or public use. Keep infrastructure inventories, paths, credentials and evidence
 outside Git.

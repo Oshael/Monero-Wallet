@@ -1,6 +1,6 @@
 --- a/src/db/storage.cpp
 +++ b/src/db/storage.cpp
-@@ -376,6 +376,44 @@
+@@ -376,6 +376,47 @@
        "subaddress_indexes_by_account_id,public_key", (MDB_CREATE | MDB_DUPSORT), MONERO_COMPARE(subaddress_map, subaddress)
      };
  
@@ -38,6 +38,9 @@
 +    const lmdb::basic_table<crypto::hash, deletion_entry> deletion_queue{
 +      "wallet_deletion_queue_v1", MDB_CREATE
 +    };
++    const lmdb::basic_table<crypto::public_key, crypto::hash> deletions_by_address{
++      "wallet_deletions_by_address_v1", MDB_CREATE | MDB_DUPSORT
++    };
 +    const lmdb::basic_table<image_reference, account_id> image_references{
 +      "wallet_image_references_v1", MDB_CREATE | MDB_DUPSORT
 +    };
@@ -45,7 +48,7 @@
      template<typename D>
      expect<void> check_cursor(MDB_txn& txn, MDB_dbi tbl, std::unique_ptr<MDB_cursor, D>& cur) noexcept
      {
-@@ -662,34 +700,61 @@
+@@ -662,34 +703,61 @@
        return out;
      }
  
@@ -135,18 +138,19 @@
      }
  
      template<typename T>
-@@ -718,6 +783,10 @@
+@@ -718,6 +786,11 @@
        MDB_dbi events;
        MDB_dbi subaddress_ranges;
        MDB_dbi subaddress_indexes;
 +      MDB_dbi counter;
 +      MDB_dbi delete_tokens;
 +      MDB_dbi deletion_queue;
++      MDB_dbi deletions_by_address;
 +      MDB_dbi image_references;
      } tables;
  
      const unsigned create_queue_max;
-@@ -771,6 +840,30 @@
+@@ -771,6 +844,36 @@
          MONERO_UNWRAP(convert_table<v0::request_info, request_info>(*txn, *v0_requests, tables.requests));
        else if (v0_requests != lmdb::error(MDB_NOTFOUND))
          MONERO_THROW(v0_requests.error(), "Error open old requests table");
@@ -154,6 +158,12 @@
 +      tables.counter = account_counter.open(*txn).value();
 +      tables.delete_tokens = delete_tokens.open(*txn).value();
 +      tables.deletion_queue = deletion_queue.open(*txn).value();
++      tables.deletions_by_address = deletions_by_address.open(*txn).value();
++      MDB_stat queue_stats{}, deletion_index_stats{};
++      if (mdb_stat(txn.get(), tables.deletion_queue, &queue_stats) ||
++          mdb_stat(txn.get(), tables.deletions_by_address, &deletion_index_stats) ||
++          queue_stats.ms_entries != deletion_index_stats.ms_entries)
++        throw std::runtime_error{"Inconsistent deletion queue; no automatic migration"};
 +      tables.image_references = image_references.open(*txn).value();
 +      const unsigned fork_version = 1;
 +      MDB_val fork_key = lmdb::to_val(fork_version), fork_value{};
@@ -177,7 +187,7 @@
  
        check_blockchain(*txn, tables.blocks);
        check_pow(*txn, tables.pows);
-@@ -1531,19 +1624,9 @@
+@@ -1531,19 +1634,9 @@
  
        for (;;)
        {
@@ -200,7 +210,7 @@
  
          MLWS_LMDB_CHECK(mdb_cursor_del(&spends_cur, 0));
          const int err = mdb_cursor_get(&spends_cur, &key, &value, MDB_NEXT_DUP);
-@@ -2107,6 +2190,7 @@
+@@ -2107,6 +2200,7 @@
        MLWS_LMDB_CHECK(
          mdb_cursor_put(&accounts_cur, &key, &value, MDB_NODUPDATA)
        );
@@ -208,7 +218,7 @@
        return success();
      }
    } // anonymous
-@@ -2130,9 +2214,9 @@
+@@ -2130,9 +2224,9 @@
        MONERO_CHECK(check_cursor(txn, this->db->tables.accounts_ba, accounts_ba_cur));
        MONERO_CHECK(check_cursor(txn, this->db->tables.accounts_bh, accounts_bh_cur));
  
@@ -221,7 +231,7 @@
  
        MDB_val keyv = lmdb::to_val(blocks_version);
        MDB_val value{};
-@@ -2145,9 +2229,8 @@
+@@ -2145,9 +2239,8 @@
        if (!height)
          return height.error();
  
@@ -232,7 +242,7 @@
        user.address = address;
        static_assert(sizeof(user.key) == sizeof(key), "bad memcpy");
        std::memcpy(std::addressof(user.key), std::addressof(key), sizeof(key));
-@@ -2653,6 +2736,7 @@
+@@ -2653,6 +2746,7 @@
        if (err)
          return log_lmdb_error(err, __LINE__, __FILE__);
  
@@ -240,7 +250,7 @@
        std::vector<webhook_new_account> hooks{};
        webhook_key wkey{account_id::invalid, webhook_type::new_account};
        keyv = lmdb::to_val(wkey);
-@@ -2795,9 +2879,6 @@
+@@ -2795,9 +2889,6 @@
        MONERO_CHECK(check_cursor(txn, tables.subaddress_indexes, indexes_cur));
        MONERO_CHECK(check_cursor(txn, tables.outputs, outputs_cur));
  
@@ -250,7 +260,7 @@
  
        const request req = request::create;
        for (account_address const& address : addresses)
-@@ -2816,12 +2897,11 @@
+@@ -2816,12 +2907,11 @@
  
          MLWS_LMDB_CHECK(mdb_cursor_del(requests_cur.get(), 0));
  
@@ -266,7 +276,7 @@
          user.address = address;
          user.key = info->key;
          user.start_height = info->start_height;
-@@ -2842,7 +2922,6 @@
+@@ -2842,7 +2932,6 @@
            return added.error();
          }
  
@@ -274,7 +284,7 @@
          stored.push_back(address);
        }
        return stored;
-@@ -2954,6 +3033,7 @@
+@@ -2954,6 +3043,7 @@
          if (!err)
          {
            MLWS_LMDB_CHECK(mdb_cursor_del(requests_cur.get(), 0));
@@ -282,7 +292,7 @@
            rejected.push_back(address);
          }
        }
-@@ -2970,6 +3050,14 @@
+@@ -2970,6 +3060,14 @@
        MONERO_CHECK(bulk_insert(spends_cur, user, spends));
        for (auto const& entry : spends)
        {
@@ -297,7 +307,7 @@
          const db::key_image image{entry.image, entry.link};
  
          MDB_val key = lmdb::to_val(entry.source);
-@@ -3294,8 +3382,12 @@
+@@ -3294,8 +3392,12 @@
              continue; // to next account
            }
  
@@ -312,7 +322,7 @@
            MLWS_LMDB_CHECK(mdb_cursor_get(accounts_cur.get(), &key, &value, MDB_GET_BOTH));
          }
  
-@@ -3356,6 +3448,15 @@
+@@ -3356,6 +3458,15 @@
        MONERO_CHECK(check_cursor(txn, this->db->tables.subaddress_ranges, ranges_cur));
        MONERO_CHECK(check_cursor(txn, this->db->tables.subaddress_indexes, indexes_cur));
  
@@ -328,7 +338,7 @@
        return do_upsert(*ranges_cur, *indexes_cur, id, address, view_key, subaddrs, max_subaddr);
      });
    }
-@@ -3614,5 +3715,249 @@
+@@ -3614,5 +3725,258 @@
         return success();
       });
     }
@@ -437,6 +447,9 @@
 +        const auto done = erase_batch(txn, tables.webhooks, hook, budget);
 +        if (!done || !*done) return done;
 +      }
++      MDB_val address_key = lmdb::to_val(queued->address.view_public);
++      MDB_val address_value = lmdb::to_val(token);
++      MLWS_LMDB_CHECK(mdb_del(&txn, tables.deletions_by_address, &address_key, &address_value));
 +      MLWS_LMDB_CHECK(mdb_del(&txn, tables.deletion_queue, &queue_key, nullptr));
 +      return true;
 +    }
@@ -467,6 +480,8 @@
 +        const deletion_entry queued{user->id, address};
 +        key = lmdb::to_val(token); value = lmdb::to_val(queued);
 +        MLWS_LMDB_CHECK(mdb_put(&txn, tables.deletion_queue, &key, &value, MDB_NOOVERWRITE));
++        key = lmdb::to_val(address.view_public); value = lmdb::to_val(token);
++        MLWS_LMDB_CHECK(mdb_put(&txn, tables.deletions_by_address, &key, &value, MDB_NODUPDATA));
 +        MLWS_LMDB_CHECK(mdb_cursor_del(ac.get(), 0));
 +        key = lmdb::to_val(user->scan_height); value = lmdb::to_val(user->id);
 +        MLWS_LMDB_CHECK(mdb_cursor_get(bh.get(), &key, &value, MDB_GET_BOTH));
@@ -540,7 +555,11 @@
 +        const auto exists = has_registration(txn, db->tables, address);
 +        if (!exists) return exists.error();
 +        if (*exists) return {lws::error::bad_view_key};
-+        return success(); // already absent, authenticated idempotent retry
++        k = lmdb::to_val(address.view_public);
++        const int pending = mdb_get(&txn, db->tables.deletions_by_address, &k, &v);
++        if (!pending) return {lws::error::bad_view_key};
++        if (pending != MDB_NOTFOUND) return log_lmdb_error(pending, __LINE__, __FILE__);
++        return success(); // absent with no pending data: authenticated retry
 +      }
 +      MLWS_LMDB_CHECK(found);
 +      const auto issued = delete_tokens.get_value<delete_token>(v);

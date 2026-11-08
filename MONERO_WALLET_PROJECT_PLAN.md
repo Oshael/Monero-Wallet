@@ -54,8 +54,9 @@ approved an isolated LUKS2 test with a new image of at most 4 GiB, including
 `dm_crypt` loading if needed and only that test mount. On 2026-11-08 the owner
 approved extending the pinned LWS build with authenticated deletion and a first
 isolated persistent LUKS2 volume with manual unlocking after reboot and owner-held
-recovery custody. Retention duration, backup expiry, recovery handoff and public
-deployment remain unresolved delivery details. See the
+recovery custody. The owner subsequently selected retention until requested
+deletion, no inactivity expiry and no scanner database backups for the first
+stage. Recovery handoff and public deployment remain unresolved delivery details. See the
 [service delivery record](docs/LIGHT_SERVICE_DELIVERY.md). The model decision
 does not approve plaintext persistence, new fees or replacement cryptography.
 

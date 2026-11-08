@@ -9,7 +9,9 @@ deleted registrations and cannot repopulate them from an older scan. Protected
 storage owns the encrypted filesystem and manual mount lifecycle independently
 of scanning. Neither responsibility belongs in the browser runtime or vault.
 The approved scope is the pinned server extension and isolated LUKS2 persistence,
-with no public activation or automatic retention/backup policy selection.
+with no public activation. The subsequent owner decision keeps registrations
+until requested deletion, has no inactivity expiry and creates no scanner
+database backups in this first stage.
 
 The maintained patch, build recipe and contracts are in
 [`experiments/lws`](../experiments/lws/README.md). The final native suite passed
@@ -29,8 +31,8 @@ state bag, dependency cycle or browser/server import was added. Existing databas
 CRUD remains in upstream storage; this change adds one cohesive account lifecycle
 operation there rather than moving table ownership to a transport handler.
 The first-use fork schema rejects non-empty upstream private tables; no existing
-database was migrated. The browser deletion workflow, retention, backups and
-public startup workflow remain separate outstanding work.
+database was migrated. The browser deletion workflow and public startup workflow
+remain outstanding work. No expiry timer or database backup job is selected.
 
 ## Continuing execution authority
 

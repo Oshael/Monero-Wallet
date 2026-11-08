@@ -131,6 +131,8 @@ LWS_CASE("wallet deletion resumes bounded cleanup and preserves shared images")
   EXPECT(db.import_request(wallet.address, last.id, {}));
   const auto token = MONERO_UNWRAP(db.prepare_account_delete(wallet.address, wallet.view));
   EXPECT(!MONERO_UNWRAP(db.delete_account(wallet.address, wallet.view, token)));
+  // An unknown token cannot report complete while this address still has data.
+  EXPECT(!db.delete_account(wallet.address, wallet.view, crypto::rand<crypto::hash>()));
   EXPECT(!MONERO_UNWRAP(db.start_read()).get_account(wallet.address));
   {
     auto reader = MONERO_UNWRAP(db.start_read());

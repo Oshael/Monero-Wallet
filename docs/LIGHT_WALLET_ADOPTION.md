@@ -26,8 +26,9 @@ On 2026-11-08 the owner approved extending the pinned LWS build with
 authenticated account deletion, accepting the scoped maintenance and review
 responsibility. The owner also approved isolated persistent LUKS2 storage with
 manual unlocking after reboot and owner-held recovery custody. These decisions
-do not authorize public service deployment, select automatic retention or backup
-expiry, or establish an independently audited release. See
+do not authorize public service deployment or establish an independently audited
+release. The owner subsequently selected keeping registrations until requested
+deletion, no inactivity expiry and no scanner database backup in this first stage. See
 [the service delivery record](LIGHT_SERVICE_DELIVERY.md).
 
 - The browser engine owns secret spend authority, transaction construction,

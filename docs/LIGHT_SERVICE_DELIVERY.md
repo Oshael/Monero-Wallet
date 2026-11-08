@@ -1,7 +1,8 @@
 # Light service delivery decisions
 
 Status: server-extension and manual-unlock storage routes approved on 2026-11-08;
-public deployment and retention policy remain unapproved. The client integration
+public deployment remains unapproved. The owner subsequently selected retention
+until requested deletion and no scanner database backups for this first stage. The client integration
 and disposable tests are complete independently of this service decision. The
 server candidate remains pinned to the revision in
 [the adoption record](LIGHT_WALLET_ADOPTION.md).
@@ -45,8 +46,8 @@ confirmed gap in the pinned candidate, not a claim that no other branch can
 support it.
 
 Do not promise deletion by hiding an account or silently adopt indefinite
-retention. No persistent multi-user service is activated until this gap and the
-owner's retention policy are resolved. Earlier temporary scanners used tmpfs and
+retention. No persistent multi-user service is activated until the
+client deletion flow is integrated. Earlier temporary scanners used tmpfs and
 were stopped after validation. The new encrypted volume contains only disposable
 test data, with no real wallet registration or balance.
 
@@ -59,11 +60,12 @@ random registration-scoped deletion token. It removes live credentials atomicall
 cleans indexes in bounded batches, resumes cleanup after restart and prevents
 stale scan writes/old-token deletion of a new registration. See the
 [protocol and test recipe](../experiments/lws/README.md). No new cryptographic
-primitive is introduced. Backup expiry remains an owner decision.
+primitive is introduced. The selected first stage has no scanner database backups.
 
 The 24-case native suite passed, including authenticated deletion, pending
 creation rejection, concurrent scan commits, restart, shared image references,
-bounded cleanup and HTTP replay. The same affected contracts passed with the
+bounded cleanup, rejection of false completion for an unknown token while cleanup
+is pending, and HTTP replay. The same affected contracts passed with the
 test database on the encrypted mount under an unprivileged numeric identity.
 Source application checks, shell syntax and ELF non-executable stacks passed.
 The browser action for deletion and its durable uncertain-result handling still
@@ -74,13 +76,22 @@ copy-on-write/free pages, filesystem/provider snapshots or older backups can
 retain bytes. LUKS2 protects the closed volume, not data from host root while
 mounted. Neither immediate physical erasure nor backup expiry is promised.
 
-The proposed policy retains scanning state while the account is registered,
-allows owner-requested deletion and has no automatic inactivity expiry. A
-finite inactivity period is an alternative that reduces retained data but forces
-returning users to register and wait for another server scan. Backup retention
-and the meaning/timing of deletion must be selected with the owner; removing a
-live LMDB row alone cannot erase an older backup or revoke a previously shared
-view key. Neither proposed retention policy is approved by this document.
+## Approved retention and backup policy
+
+On 2026-11-08 the owner selected keeping scanning registrations and view keys
+until the user explicitly requests deletion, with no automatic inactivity expiry.
+Locking the client does not request server deletion. The first stage has no
+scanner database backups. If that database is lost/corrupted, registrations and
+the receiving index must be rebuilt by server-side scanning; the user's seed,
+private spend authority and encrypted local wallet backups remain on the client.
+No scheduled database copy, provider snapshot or external backup is authorized.
+Owner-held LUKS2 unlock/header recovery material is not a backup of scanner data.
+
+The owner-requested operation deletes active database records and bounded
+associated indexes. It cannot revoke knowledge of a shared view key or promise
+forensic erasure of copy-on-write pages, underlying storage or provider copies.
+No application database backup exists to expire in this first stage. Revisit
+retention/deletion disclosure before introducing any backup or snapshot system.
 
 Unselected alternative: evaluate another compatible server with the needed deletion
 contract. This requires license/maintenance review and repeats subaddress,
@@ -92,8 +103,8 @@ scan progress on restart and does not meet persistent-service availability.
 ## Activation gate
 
 Before persistent/public activation, review the integrated server/client source,
-required checks, encrypted storage recovery, authenticated deletion, backup
-expiry, capacity/admission controls and a project-scoped rollback. Choose the
+required checks, encrypted storage recovery, authenticated deletion, the selected no-backup policy,
+capacity/admission controls and a project-scoped rollback. Choose the
 public origin/TLS and obtain explicit deployment authorization. Source pushes
 and isolated tests do not authorize service activation. Independent security
 review and mainnet capacity remain launch gates. No mainnet release, shared
