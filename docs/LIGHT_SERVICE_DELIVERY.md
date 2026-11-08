@@ -113,17 +113,24 @@ scan progress on restart and does not meet persistent-service availability.
 The owner selected ngrok for temporary HTTPS tests instead of choosing a public
 project domain. After disclosure that ordinary ngrok HTTPS terminates TLS in
 ngrok's cloud and can expose addresses, private view keys and request metadata to
-that provider, the owner explicitly approved this only for newly generated,
-disposable, unfunded wallets. Existing/funded profiles, imported backups and
-mainnet wallets must not use this test endpoint. Seed and private spend keys
+that provider, the owner approved disposable development wallets. The owner
+subsequently clarified that "disposable" means wallets used before product
+launch, including funded stagenet fixtures and their backup/recovery flows; it
+must not reduce testing to empty wallets. This supersedes the initial unfunded-
+only test restriction. Test the complete receipt, local approval/signing, relay,
+confirmation, backup/restore and scanner-deletion flows with stagenet coins.
+Preserve the original fixture backups and operate on isolated copies. Mainnet
+wallets and real-value XMR remain outside this test scope. Seed and private spend keys
 remain client-only. This is a temporary exception for disposable test view keys,
 not a changed production privacy policy or a promise of provider-side deletion.
 
 Use a project-only, bounded test gateway and isolated agent configuration. Disable
 local payload inspection/replay and keep inventories, endpoint capabilities,
 credentials and operational evidence ignored. Do not change the owner's global
-ngrok configuration, purchase/upgrade a plan, expose admin APIs or broadcast
-transactions through this fixture. Close the tunnel and disposable scanner after
+ngrok configuration, purchase/upgrade a plan or expose admin/node-administration
+APIs. Permit only the validated stagenet transaction-broadcast path required by
+the approved full-flow test, with bounded attempts and the existing signed/unknown
+transaction recovery contract. Close the tunnel and disposable scanner after
 the test window; preserve scoped rollback and all other projects. The existing
 approved private ZMQ test-node workflow may be reused with its one-writer database
 rule and restoration of the prior project node. No production service activation

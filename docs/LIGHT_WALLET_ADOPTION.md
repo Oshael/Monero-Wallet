@@ -11,8 +11,9 @@ The server can observe incoming transactions; the model is not confidential
 against the scanner operator. No third-party scanner, new fee, public deployment
 or replacement cryptographic implementation is selected by this decision. The
 owner later approved a separate temporary ngrok HTTPS exception exclusively for
-new, disposable, unfunded test wallets, after disclosure of view-key visibility
-to ngrok. See the service delivery record; production privacy is unchanged.
+disposable development wallets, after disclosure of view-key visibility to ngrok.
+The owner clarified that full funded-stagenet flows and recovery must be tested;
+"disposable" does not mean an empty-wallet-only test. See the service delivery record; production privacy is unchanged.
 
 The existing stagenet wallet and its verified encrypted backups remain the legacy
 baseline. Client integration, assembled disposable validation and the 1,000-receipt
