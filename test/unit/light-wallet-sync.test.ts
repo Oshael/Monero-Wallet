@@ -1,7 +1,19 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
+import { LightWalletRegistration } from '../../src/engine/light-wallet/registration.ts';
 import { LightWalletSync } from '../../src/engine/light-wallet/sync.ts';
 import { NativeWalletState } from '../../src/engine/wallet-state.ts';
+
+function makeLightSync(
+  wallet: ConstructorParameters<typeof LightWalletSync>[0],
+  state: NativeWalletState,
+  options: Omit<ConstructorParameters<typeof LightWalletSync>[2], 'registration'>,
+): LightWalletSync {
+  return new LightWalletSync(wallet, state, {
+    ...options,
+    registration: new LightWalletRegistration(wallet, options.network, options.settings),
+  });
+}
 
 async function settled(state: NativeWalletState): Promise<void> {
   for (let attempt = 0; attempt < 100 && state.status === 'syncing'; attempt++) {
@@ -48,7 +60,7 @@ await test('behind scanners expose server progress without importing or advancin
   const imports = mock.fn(async () => {
     await Promise.resolve();
   });
-  const sync = new LightWalletSync(
+  const sync = makeLightSync(
     {
       getPrimaryAddress: () => Promise.resolve('disposable'),
       getPrivateViewKey: () => Promise.resolve('12'.repeat(32)),
@@ -94,7 +106,7 @@ await test('native import failures cannot advance the light checkpoint and fatal
       },
       node,
     );
-    const sync = new LightWalletSync(
+    const sync = makeLightSync(
       {
         getPrimaryAddress: () => Promise.resolve('disposable'),
         getPrivateViewKey: () => Promise.resolve('12'.repeat(32)),
@@ -147,7 +159,7 @@ await test('a successful native import publishes the matching checkpoint before 
     },
     node,
   );
-  const sync = new LightWalletSync(
+  const sync = makeLightSync(
     {
       getPrimaryAddress: () => Promise.resolve('disposable'),
       getPrivateViewKey: () => Promise.resolve('12'.repeat(32)),
@@ -173,6 +185,51 @@ await test('a successful native import publishes the matching checkpoint before 
       height: 201,
       adoptLegacy: false,
     });
+  } finally {
+    await sync.stop();
+    fetch.mock.restore();
+  }
+});
+
+await test('restored deletion requests block registration without advancing the native checkpoint', async () => {
+  const wallet = {
+    getPrimaryAddress: () => Promise.resolve('disposable'),
+    getPrivateViewKey: () => Promise.resolve('12'.repeat(32)),
+    importLightWalletData: mock.fn(() => Promise.resolve()),
+  };
+  const node = () => Promise.resolve({ height: 201, targetHeight: 0, synced: true });
+  const state = await NativeWalletState.create(
+    {
+      getHeight: () => Promise.resolve(100),
+      getBalance: () => Promise.resolve(7n),
+      getUnlockedBalance: () => Promise.resolve(5n),
+    },
+    node,
+  );
+  const registration = new LightWalletRegistration(wallet, 'stagenet', {
+    uri: 'https://scanner.example',
+  });
+  registration.requestDeletion();
+  const settings = { ...registration.checkpoint(), height: 100, adoptLegacy: false };
+  const restored = new LightWalletRegistration(wallet, 'stagenet', settings);
+  const sync = new LightWalletSync(wallet, state, {
+    network: 'stagenet',
+    restoreHeight: 0,
+    readNode: node,
+    settings,
+    registration: restored,
+  });
+  const fetch = mock.method(globalThis, 'fetch', () =>
+    Promise.reject(new Error('Unexpected registration')),
+  );
+  try {
+    assert.throws(() => {
+      sync.start();
+    }, /light-registration-disabled/);
+    assert.equal(sync.checkpoint().height, 100);
+    assert.equal(state.view().balance, '7');
+    assert.equal(fetch.mock.callCount(), 0);
+    assert.equal(wallet.importLightWalletData.mock.callCount(), 0);
   } finally {
     await sync.stop();
     fetch.mock.restore();

@@ -103,3 +103,42 @@ void test('light containers reject ambiguous full caches and invalid scanner met
   };
   assert.throws(() => decodeSnapshot(encodeSnapshot(source)), /invalid-light-settings/);
 });
+
+void test('deletion snapshots preserve retry authority and reject clients or headers that omit it', () => {
+  const id = crypto.randomUUID();
+  const registration = {
+    phase: 'deleting' as const,
+    current: id,
+    pending: [{ id, uri: 'https://scanner.example', token: 'ab'.repeat(32) }],
+  };
+  const source = {
+    ...fixture,
+    metadata: {
+      ...fixture.metadata,
+      light: { uri: 'https://scanner.example', height: 12345, adoptLegacy: false, registration },
+    },
+  };
+  const encoded = encodeSnapshot(source);
+  assert.equal(new DataView(encoded).getUint32(0), 4);
+  assert.deepEqual(decodeSnapshot(encoded), source);
+  const older = encoded.slice(0);
+  new DataView(older).setUint32(0, 3);
+  assert.throws(() => decodeSnapshot(older), /invalid-snapshot/);
+  const untracked = encodeSnapshot({
+    ...fixture,
+    metadata: {
+      ...fixture.metadata,
+      light: { uri: 'https://scanner.example', height: 12, adoptLegacy: false },
+    },
+  });
+  new DataView(untracked).setUint32(0, 4);
+  assert.throws(() => decodeSnapshot(untracked), /invalid-snapshot/);
+  const invalid = {
+    ...source,
+    metadata: {
+      ...source.metadata,
+      light: { ...source.metadata.light, registration: { ...registration, pending: [] } },
+    },
+  };
+  assert.throws(() => decodeSnapshot(encodeSnapshot(invalid)), /invalid-light-registration/);
+});

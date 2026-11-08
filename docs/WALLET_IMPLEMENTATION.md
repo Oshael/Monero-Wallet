@@ -20,7 +20,8 @@ deletion authorization survived an actual LUKS2 close/reopen; recovery, deletion
 re-registration and replay rejection passed under an unprivileged identity.
 The affected HTTP/database contracts also passed on the encrypted filesystem.
 The volume was closed afterward and its temporary server-side unlock key removed.
-No client vault format, seed/spend authority or existing funded backup changed.
+The server work changed no client encryption format, seed/spend authority or
+existing funded backup. The subsequent client snapshot framing is described below.
 
 The server structural review kept account deletion and every index mutation in
 the database writer transaction. Shared image references are maintained by the
@@ -31,8 +32,45 @@ state bag, dependency cycle or browser/server import was added. Existing databas
 CRUD remains in upstream storage; this change adds one cohesive account lifecycle
 operation there rather than moving table ownership to a transport handler.
 The first-use fork schema rejects non-empty upstream private tables; no existing
-database was migrated. The browser deletion workflow and public startup workflow
-remain outstanding work. No expiry timer or database backup job is selected.
+database was migrated. The client deletion workflow and its assembled browser validation passed; the
+public startup workflow remains outstanding work. No expiry timer or database backup job is selected.
+
+## Client deletion ownership
+
+The client deletion integration gives a dedicated registration owner the selected
+scanner, local registration phase and bounded pending deletion intents. Light
+sync retains only validated height/adoption state and reads the registration
+owner's permission to register. A separate session workflow checkpoints the
+request and then the server token before deleting; transport failures preserve
+the same intent/token for retry. Explicit endpoint changes retain older pending
+intents. Snapshot container v4 protects this new state from older clients that
+would otherwise ignore it and register again. Vault encryption/AAD, storage keys,
+wallet keys, cached history and the transfer journal remain unchanged. The UI
+owns deletion consent, per-origin permission requests and status display in its
+own panel; the connection form retains only endpoint selection/consent.
+
+The application checks passed typed lint, strict types, dependency boundaries,
+formatting and 69 tests. The Chromium fixture using the real pinned REST/database
+modules passed an intentionally lost deletion response, encrypted v4 backup
+import, no automatic login/re-registration, retained address/labels and fresh
+consent for re-registration. The prior real-chain receipt/send evidence remains
+unchanged; this new fixture isolates the deletion lifecycle and uses no funds.
+The native suite passed 24 cases after adding authenticated absence preparation
+without registration and recovery of unfinished cleanup tokens. The privileged
+storage remount test was not rerun for that API-only extension; its earlier
+passing filesystem/key-recovery result remains valid.
+
+The final client structural review found one authoritative registration owner:
+endpoint, phase, current operation and accepted pending intents. Sync owns only
+its validated height/adoption and request lifecycle. The session workflow owns
+checkpoint-before-network ordering; session integration only composes it under
+the existing exclusivity/idle rules. Snapshot decoding validates the bounded
+registration representation and v4 framing; it does not perform network IO. No
+private key/token is published through the view, and the deletion transport
+never registers or uses a generic logger. Each request client disposes its
+credentials/abort lifecycle and has a 20-second total budget. Existing module
+boundary checks cover all new imports. No dependency, cycle, vault access from
+the engine or shared mutable application context was introduced.
 
 ## Continuing execution authority
 
@@ -227,8 +265,10 @@ its own bounded recovery section, preserving the existing hex limits and total
 the engine snapshot module owns framing and offsets. Version-1 snapshots remain
 readable, including a golden fixture produced by the original encoder before
 the migration. Full-scan checkpoints write version 2; explicitly selected light
-checkpoints use version 3 to prevent older clients from misreading their native
-cache. Both use the same bounded recovery section and atomic vault. AES envelope
+checkpoints without registration state use version 3 to prevent older clients
+from misreading their native cache. Tracked deletion lifecycle state uses version
+4 so older clients cannot ignore it. All use the same bounded recovery section
+and atomic vault. AES envelope
 version/AAD, IndexedDB names/schema and passwords
 are unchanged; independently exported version-1 backups remain readable.
 

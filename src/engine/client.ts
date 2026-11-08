@@ -53,6 +53,18 @@ export class WalletEngine {
     return this.#view({ kind: 'light-service', ...connection });
   }
 
+  async requestLightDeletion(): Promise<WalletView> {
+    return this.#view({ kind: 'request-light-deletion' });
+  }
+
+  async prepareLightDeletion(): Promise<WalletView> {
+    return this.#view({ kind: 'prepare-light-deletion' });
+  }
+
+  async finishLightDeletion(): Promise<WalletView> {
+    return this.#view({ kind: 'finish-light-deletion' });
+  }
+
   async startSync(): Promise<WalletView> {
     return this.#view({ kind: 'start-sync' });
   }

@@ -148,12 +148,17 @@ while the scanner remains responsible for completeness of previously unknown
 history. Reorganizations must be validated against an actual changed node view,
 not a synthetic omission with an unchanged node.
 
-Light checkpoints use internal snapshot container version 3, with explicit
+Light checkpoints without registration lifecycle state use internal snapshot
+container version 3, with explicit
 scanner selection, last imported height and a legacy-adoption marker. The vault
 encryption, AAD, database and storage keys do not change. Versions 1 and 2 remain
 readable; older clients must reject version 3 rather than mistake its cache for
 a locally scanned wallet. Signed and uncertain transfer recovery stays in the
-existing bounded recovery section.
+existing bounded recovery section. Deletion requests use container version 4,
+which also preserves the disabled registration and bounded pending tokens. This
+client reads versions 1 through 4. Older clients reject v4 rather than ignoring
+an unfinished deletion and re-registering the account. This framing change does
+not rename storage keys, change AES/AAD or discard transaction recovery.
 
 Legacy adoption is explicit. The native adapter stages verified replacement
 outputs while retaining subaddress labels and locally known outgoing records.

@@ -3,6 +3,7 @@ import type { WalletView } from '../domain/wallet-view.ts';
 import type { WalletSession } from '../session/index.ts';
 import { element, section } from './dom.ts';
 import { connectionPanel } from './connection.ts';
+import { scannerDeletionPanel } from './scanner-deletion.ts';
 import { receivingPanel } from './receive.ts';
 import { backupPanel } from './backup.ts';
 import { sendPanel } from './send.ts';
@@ -25,6 +26,7 @@ export function walletScreen(options: {
   const backupState = element('p', { id: 'backup-state' });
   const lock = element('button', { type: 'button' }, 'Lock wallet');
   const sends = sendPanel(options);
+  const deletions = scannerDeletionPanel(options);
   lock.addEventListener('click', () => {
     options.session.lock();
   });
@@ -32,6 +34,7 @@ export function walletScreen(options: {
   root.append(
     overview,
     connectionPanel(options),
+    deletions.element,
     receivingPanel(options),
     sends.element,
     backupPanel(options),
@@ -53,6 +56,7 @@ export function walletScreen(options: {
       backupState.textContent = view.backupVerified
         ? 'Written seed verified.'
         : 'Verify your written seed before receiving a meaningful amount.';
+      deletions.update(view.lightService);
       sends.update({ pending: view.pending, fresh: view.sync === 'synced' });
     },
   };

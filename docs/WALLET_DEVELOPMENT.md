@@ -170,3 +170,25 @@ not payloads; the runner asserts that no block/hash scan RPC occurred. It sample
 RSS using `client-metrics.cjs` and removes its disposable profiles. Its encrypted
 input backup must already belong to the approved disposable test. Close the
 private bridges after the measurement.
+
+## Scanner deletion development
+
+The pinned server source preparation, isolated build and protocol contracts are
+in [`experiments/lws`](../experiments/lws/README.md). `LWS quality` repeats native
+checks in CI, independently of the application's `Wallet quality` workflow.
+
+For the assembled deletion UI test, build the normal stagenet extension, then
+run `node test/browser/build-scanner-deletion-probe.mjs`. Copy its test bundle
+only into a disposable extension copy alongside `stagenet-browser.cjs` and
+`check-scanner-deletion.cjs`. Give that fixture loopback host permissions only;
+never include the probe in a delivery package. Run against `wallet-lws-rest-fixture`
+with a new tmpfs database in an isolated network namespace. Both listen on
+loopback, and no host ports are published. The test uses only newly generated,
+unfunded stagenet wallets. It simulates a lost deletion response, reimports an
+encrypted v4 backup, retries without login, checks label/address preservation
+and requires explicit consent before registration can resume.
+
+The owner selected keeping scanner registrations until requested deletion, no
+inactivity expiry and no database backups in the first stage. Seed/encrypted
+wallet backups remain client-owned. No test script authorizes a public endpoint,
+service installation or host configuration change.

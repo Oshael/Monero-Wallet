@@ -4,7 +4,13 @@ import { WalletError } from '../domain/validation.ts';
 import type { WalletView } from '../domain/wallet-view.ts';
 import type { WorkerResult } from '../runtime/worker-host.ts';
 import { isTransferCommand, isConnectionCommand } from './messages.ts';
-import type { EngineCommand, EngineReply, TransferCommand, ConnectionCommand } from './messages.ts';
+import type {
+  EngineCommand,
+  EngineReply,
+  TransferCommand,
+  ConnectionCommand,
+  LightDeletionCommand,
+} from './messages.ts';
 import { decodeSnapshot, encodeSnapshot } from './snapshot.ts';
 import type { EngineMetadata } from './snapshot.ts';
 import { WalletConnection } from './connection.ts';
@@ -215,9 +221,27 @@ export class EngineRuntime {
   }
 
   async #setConnection(command: ConnectionCommand): Promise<WorkerResult<EngineReply>> {
+    if (command.kind !== 'node' && command.kind !== 'light-service')
+      return this.#lightDeletion(command);
     const active = this.#ready();
     if (command.kind === 'node') await active.connection.selectNode(command.node);
     else await active.connection.selectLight(command);
+    return this.#view();
+  }
+
+  async #lightDeletion(command: LightDeletionCommand): Promise<WorkerResult<EngineReply>> {
+    const connection = this.#active().connection;
+    switch (command.kind) {
+      case 'request-light-deletion':
+        await connection.requestLightDeletion();
+        break;
+      case 'prepare-light-deletion':
+        await connection.prepareLightDeletion();
+        break;
+      case 'finish-light-deletion':
+        await connection.finishLightDeletion();
+        break;
+    }
     return this.#view();
   }
 
@@ -243,10 +267,12 @@ export class EngineRuntime {
 
   #view(): WorkerResult<EngineReply> {
     const active = this.#active();
+    const lightService = active.connection.lightServiceView();
     const view: WalletView = {
       address: active.address,
       ...active.connection.state.view(),
       backupVerified: active.metadata.backupVerified,
+      ...(lightService === undefined ? {} : { lightService }),
       pending: active.transfers.view(),
     };
     return { value: { kind: 'view', view } };

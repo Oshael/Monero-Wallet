@@ -48,8 +48,8 @@ export function encodeSnapshot(snapshot: EngineSnapshot): ArrayBuffer {
       throw new WalletError('snapshot-too-large');
     const bytes = new Uint8Array(total);
     const header = new DataView(bytes.buffer);
-    // Old clients must reject light caches rather than interpret them as full scans.
-    header.setUint32(0, snapshot.metadata.light === undefined ? 2 : 3);
+    // Old clients must reject deletion state rather than silently register again.
+    header.setUint32(0, snapshotVersion(snapshot.metadata));
     header.setUint32(4, metadata.byteLength);
     header.setUint32(8, snapshot.keys.byteLength);
     header.setUint32(12, snapshot.cache.byteLength);
@@ -75,9 +75,11 @@ export function decodeSnapshot(buffer: ArrayBuffer): EngineSnapshot {
   );
   if (layout.version !== 1 && 'pending' in object(metadataValue))
     throw new WalletError('invalid-snapshot');
-  if ((layout.version === 3) !== 'light' in object(metadataValue))
+  if (layout.version >= 3 !== 'light' in object(metadataValue))
     throw new WalletError('invalid-snapshot');
   const metadata = decodeMetadata(metadataValue);
+  if ((layout.version === 4) !== (metadata.light?.registration !== undefined))
+    throw new WalletError('invalid-snapshot');
   if (layout.version !== 1)
     metadata.pending = decodeTransferRecovery(bytes.subarray(layout.recoveryOffset));
   return {
@@ -100,7 +102,7 @@ function readLayout(buffer: ArrayBuffer): {
   const header = new DataView(buffer);
   const version = header.getUint32(0);
   const headerLength = version === 1 ? LEGACY_HEADER : FIXED_HEADER;
-  if (![1, 2, 3].includes(version) || buffer.byteLength < headerLength)
+  if (![1, 2, 3, 4].includes(version) || buffer.byteLength < headerLength)
     throw new WalletError('invalid-snapshot');
   const metaLength = header.getUint32(4);
   const keysLength = header.getUint32(8);
@@ -142,4 +144,9 @@ function decodeMetadata(value: unknown): EngineMetadata {
     pending: data.pending === undefined ? null : pendingTransfer(data.pending),
     ...(data.light === undefined ? {} : { light: lightWalletSettings(data.light) }),
   };
+}
+
+function snapshotVersion(metadata: EngineMetadata): number {
+  if (!metadata.light) return 2;
+  return metadata.light.registration === undefined ? 3 : 4;
 }

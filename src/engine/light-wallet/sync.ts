@@ -5,11 +5,13 @@ import type { NativeWalletState } from '../wallet-state.ts';
 import { LightWalletClient } from './client.ts';
 import type { LightWalletData } from './data.ts';
 import type { LightWalletSettings } from './settings.ts';
+import type { LightWalletRegistration } from './registration.ts';
 
 interface Options {
   network: 'stagenet' | 'mainnet';
   restoreHeight: number;
   settings: LightWalletSettings;
+  registration: LightWalletRegistration;
   readNode: () => Promise<NodeChainStatus>;
 }
 
@@ -21,8 +23,9 @@ type LightWallet = Pick<
 export class LightWalletSync {
   readonly #wallet: LightWallet;
   readonly #state: NativeWalletState;
-  readonly #options: Omit<Options, 'settings'>;
-  #checkpoint: LightWalletSettings;
+  readonly #options: Omit<Options, 'settings' | 'registration'>;
+  readonly #registration: LightWalletRegistration;
+  #checkpoint: Pick<LightWalletSettings, 'height' | 'adoptLegacy'>;
   #running: Promise<void> | undefined;
   #controller: AbortController | undefined;
   #timer: ReturnType<typeof setTimeout> | undefined;
@@ -31,24 +34,25 @@ export class LightWalletSync {
   constructor(wallet: LightWallet, state: NativeWalletState, options: Options) {
     this.#wallet = wallet;
     this.#state = state;
-    const { settings, ...operation } = options;
+    const { settings, registration, ...operation } = options;
     this.#options = operation;
-    this.#checkpoint = { ...settings };
+    this.#registration = registration;
+    this.#checkpoint = { height: settings.height, adoptLegacy: settings.adoptLegacy };
   }
 
   checkpoint(): LightWalletSettings {
     this.assertHealthy();
-    return { ...this.#checkpoint };
+    return { ...this.#registration.checkpoint(), ...this.#checkpoint };
   }
 
   start(): void {
     this.assertHealthy();
     if (this.#running) throw new WalletError('sync-busy');
-    if (!this.#checkpoint.uri) throw new WalletError('light-service-required');
+    const uri = this.#registration.syncUri();
     const controller = new AbortController();
     this.#controller = controller;
     this.#state.startScan();
-    this.#running = this.#run(controller).finally(() => {
+    this.#running = this.#run(controller, uri).finally(() => {
       clearTimeout(this.#timer);
       this.#controller = undefined;
       this.#running = undefined;
@@ -70,12 +74,12 @@ export class LightWalletSync {
     if (this.#fatal) throw this.#fatal;
   }
 
-  async #run(controller: AbortController): Promise<void> {
+  async #run(controller: AbortController, uri: string): Promise<void> {
     let client: LightWalletClient | undefined;
     try {
       if (!(await this.#state.canImportLightData())) return;
       client = await LightWalletClient.open({
-        uri: this.#checkpoint.uri ?? '',
+        uri,
         network: this.#options.network,
         restoreHeight: this.#options.restoreHeight,
         credentials: {

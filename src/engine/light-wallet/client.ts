@@ -4,6 +4,7 @@ import { decodeLightWalletData, lightWalletProgress } from './data.ts';
 import type { LightWalletData } from './data.ts';
 import { boolean, hex, integer, unsigned } from './values.ts';
 import { LightWalletTransport } from './transport.ts';
+import { readLightServerVersion } from './protocol.ts';
 
 interface Credentials {
   address: string;
@@ -82,9 +83,7 @@ export class LightWalletClient {
   }
 
   async #register(options: Options): Promise<void> {
-    const version = object(await this.#transport.request('get_version'));
-    const network = options.network === 'stagenet' ? 'stage' : 'main';
-    if (version.network_type !== network) throw new WalletError('wrong-light-network');
+    const version = await readLightServerVersion(this.#transport, options.network);
     // LWS counts provisioned addresses plus the lookahead beyond the last used index.
     if (integer(version.max_subaddresses) < 2 * lookahead.min_i) {
       throw new WalletError('light-subaddresses-unavailable');

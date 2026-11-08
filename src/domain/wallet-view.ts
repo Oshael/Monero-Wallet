@@ -1,3 +1,5 @@
+import { lightServiceView } from './light-service.ts';
+import type { LightServiceView } from './light-service.ts';
 import { atomic, height, object, text, WalletError } from './validation.ts';
 
 export interface WalletView {
@@ -8,6 +10,7 @@ export interface WalletView {
   unlockedBalance: string;
   sync: 'offline' | 'syncing' | 'synced' | 'waiting-node' | 'waiting-scanner' | 'failed';
   backupVerified: boolean;
+  lightService?: LightServiceView;
   pending: {
     id: string;
     hash: string;
@@ -38,6 +41,9 @@ export function walletView(value: unknown): WalletView {
     unlockedBalance: atomic(data.unlockedBalance).toString(),
     sync: sync as WalletView['sync'],
     backupVerified: data.backupVerified,
+    ...(data.lightService === undefined
+      ? {}
+      : { lightService: lightServiceView(data.lightService) }),
     pending: pendingView(data.pending),
   };
 }

@@ -2,6 +2,8 @@ import { nodeConnection, WalletError } from '../../domain/validation.ts';
 
 type Method =
   | 'get_version'
+  | 'prepare_account_delete'
+  | 'delete_account'
   | 'login'
   | 'import_wallet_request'
   | 'get_address_info'

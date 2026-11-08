@@ -44,6 +44,7 @@ export function connectionPanel(options: {
         if (!(await chrome.permissions.request({ origins })))
           throw new WalletError('node-permission-denied');
         await options.session.connectLight({ uri: scanner.uri, node: connection });
+        field(form, 'view-consent').checked = false;
       },
       report: options.report,
     }),

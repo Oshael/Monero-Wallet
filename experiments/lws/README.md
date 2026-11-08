@@ -22,7 +22,7 @@ clean pinned checkout with `prepare-source.sh CHECKOUT`. Run
 network, no published ports and no Docker socket. The HTTP unit tests use
 container loopback. Linux executable linking explicitly disables executable
 stacks (an inherited assembly object lacks its stack note), and the recipe checks
-all four resulting ELF headers. The image and scripts are test infrastructure, not an
+all resulting ELF headers. The image and scripts are test infrastructure, not an
 approved public deployment workflow. Record resolved image IDs and package
 versions in ignored operational evidence.
 
@@ -41,7 +41,9 @@ key is shared; no seed, private spend key or client key image is accepted.
    its encrypted checkpoint, labels, transfer journal and independent recovery.
 2. POST credentials to `/prepare_account_delete`. The server returns a random
    32-byte hex `token`, stable while that authorization belongs to the same
-   registration. A pending creation request can also be deleted.
+   registration. A pending creation request can also be deleted. An already absent
+   account receives an absence-check token without creating a registration or
+   retaining credentials; unfinished cleanup returns its existing token.
 3. POST `{address, view_key, token}` to `/delete_account`. Authentication,
    generation validation, removal of account/request view keys and indexes,
    token consumption and durable cleanup enqueue are one writer transaction.
@@ -64,9 +66,12 @@ new registration. Workers replace removed accounts on the existing ten-second
 poll; in-flight work may finish, but cannot recreate deleted database rows.
 Mempool address-cache invalidation fences writes from older cache scans.
 
-The browser deletion action and its durable uncertain-result workflow are not
-integrated yet. The current extension can register again when synchronization is
-started; server deletion must therefore not be presented as a finished app flow.
+The browser persists a deletion intent before preparing the token, then persists
+that token before sending deletion. Sync stays disabled across reopen and v4
+backup restore until explicit service consent. The selected endpoint cannot be
+re-registered while its deletion is pending. Older endpoint intents remain
+recoverable when selecting another scanner; accepted intents are never silently
+dropped. Retry work and the pending queue have explicit bounds.
 
 ## Database compatibility
 
@@ -106,3 +111,13 @@ is made. The selected first stage has no database backups and retains
 registrations until requested deletion. Complete client deletion, key handoff and
 service review before non-disposable or public use. Keep infrastructure inventories, paths, credentials and evidence
 outside Git.
+
+## Assembled browser fixture
+
+`rest-fixture.cpp` runs the pinned real HTTP/database modules in stagenet on
+container loopback with a tmpfs database. It is test-only and has no chain scanner
+or public listener. `test/browser/check-scanner-deletion.cjs` uses a disposable
+extension profile to exercise lost-response recovery, encrypted backup reopen,
+registration suppression and local-label preservation. Scanner concurrency and
+actual encrypted remount recovery are covered separately by the native and LUKS2
+contracts; this UI test does not claim to repeat chain receipt/spending tests.

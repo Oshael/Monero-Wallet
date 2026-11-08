@@ -10,9 +10,14 @@ export type TransferCommand =
   | { kind: 'approve-send' | 'arm-send' | 'broadcast-send' | 'cancel-send'; id: string }
   | { kind: 'reconcile-send' };
 
+export interface LightDeletionCommand {
+  kind: 'request-light-deletion' | 'prepare-light-deletion' | 'finish-light-deletion';
+}
+
 export type ConnectionCommand =
   | { kind: 'node'; node: NodeConnection }
-  | { kind: 'light-service'; uri: string; node: NodeConnection };
+  | { kind: 'light-service'; uri: string; node: NodeConnection }
+  | LightDeletionCommand;
 
 export type EngineCommand =
   | { kind: 'create'; seed: string; restoreHeight: number }
@@ -33,7 +38,13 @@ export function isTransferCommand(command: EngineCommand): command is TransferCo
 }
 
 export function isConnectionCommand(command: EngineCommand): command is ConnectionCommand {
-  return command.kind === 'node' || command.kind === 'light-service';
+  return (
+    command.kind === 'node' ||
+    command.kind === 'light-service' ||
+    command.kind === 'request-light-deletion' ||
+    command.kind === 'prepare-light-deletion' ||
+    command.kind === 'finish-light-deletion'
+  );
 }
 
 export type EngineReply =
@@ -103,8 +114,19 @@ function simpleCommand(value: unknown): EngineCommand {
     case 'reconcile-send':
       return { kind: value };
     default:
-      throw new WalletError('invalid-command');
+      return deletionCommand(value);
   }
+}
+
+function deletionCommand(value: unknown): LightDeletionCommand {
+  if (
+    value === 'request-light-deletion' ||
+    value === 'prepare-light-deletion' ||
+    value === 'finish-light-deletion'
+  ) {
+    return { kind: value };
+  }
+  throw new WalletError('invalid-command');
 }
 
 export function decodeReply(value: unknown): EngineReply {

@@ -46,8 +46,8 @@ confirmed gap in the pinned candidate, not a claim that no other branch can
 support it.
 
 Do not promise deletion by hiding an account or silently adopt indefinite
-retention. No persistent multi-user service is activated until the
-client deletion flow is integrated. Earlier temporary scanners used tmpfs and
+retention beyond the explicit owner-selected policy below. Persistent multi-user
+activation still requires the delivery gates below. Earlier temporary scanners used tmpfs and
 were stopped after validation. The new encrypted volume contains only disposable
 test data, with no real wallet registration or balance.
 
@@ -68,8 +68,16 @@ bounded cleanup, rejection of false completion for an unknown token while cleanu
 is pending, and HTTP replay. The same affected contracts passed with the
 test database on the encrypted mount under an unprivileged numeric identity.
 Source application checks, shell syntax and ELF non-executable stacks passed.
-The browser action for deletion and its durable uncertain-result handling still
-need integration; the current client may register again when sync is started.
+The browser action now checkpoints the local intent and then the server token
+before deletion. On uncertain results it preserves the same token and disables
+sync across reopen and encrypted v4 backup restore. Selecting the same endpoint
+is blocked until its pending deletion completes; another explicitly selected
+scanner does not discard accepted intents. The queue holds at most four intents,
+with bounded retries and no silent eviction. The assembled Chromium fixture
+passed lost-response recovery, encrypted-backup import, suppression of automatic
+login, label/address preservation and explicit-consent re-registration. This is
+a disposable stagenet HTTP/database fixture, not a repeat of chain spending or
+mainnet capacity tests.
 
 `complete:true` describes live database cleanup, not forensic erasure. LMDB
 copy-on-write/free pages, filesystem/provider snapshots or older backups can

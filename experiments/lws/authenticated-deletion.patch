@@ -338,7 +338,7 @@
        return do_upsert(*ranges_cur, *indexes_cur, id, address, view_key, subaddrs, max_subaddr);
      });
    }
-@@ -3614,5 +3725,258 @@
+@@ -3614,5 +3725,274 @@
         return success();
       });
     }
@@ -507,7 +507,23 @@
 +    {
 +      const auto exists = has_registration(txn, db->tables, address);
 +      if (!exists) return exists.error();
-+      if (!*exists) return {lws::error::account_not_found};
++      if (!*exists)
++      {
++        // Authorize an absence check without registering or retaining credentials.
++        // If an older deletion is pending, resume that exact generation instead.
++        MDB_val pending_key = lmdb::to_val(address.view_public), pending_value{};
++        const int pending = mdb_get(&txn, db->tables.deletions_by_address, &pending_key, &pending_value);
++        if (pending == MDB_NOTFOUND) return crypto::rand<crypto::hash>();
++        MLWS_LMDB_CHECK(pending);
++        const auto token = deletions_by_address.get_value<crypto::hash>(pending_value);
++        if (!token) return token.error();
++        MDB_val queue_key = lmdb::to_val(*token), queue_value{};
++        MLWS_LMDB_CHECK(mdb_get(&txn, db->tables.deletion_queue, &queue_key, &queue_value));
++        const auto entry = deletion_queue.get_value<deletion_entry>(queue_value);
++        if (!entry) return entry.error();
++        if (!same_address(entry->address, address)) return {lws::error::bad_view_key};
++        return *token;
++      }
 +      cursor::outputs cur;
 +      MONERO_CHECK(check_cursor(txn, db->tables.delete_tokens, cur));
 +      const unsigned version = 1;
@@ -832,7 +848,7 @@
    }
 --- a/tests/unit/CMakeLists.txt
 +++ b/tests/unit/CMakeLists.txt
-@@ -56,3 +56,8 @@
+@@ -56,3 +56,12 @@
    Threads::Threads
  )
  add_test(NAME monero-lws-unit COMMAND monero-lws-unit -v)
@@ -841,6 +857,10 @@
 +add_executable(wallet-lws-storage-probe storage-probe.cpp)
 +target_include_directories(wallet-lws-storage-probe PRIVATE "${CMAKE_SOURCE_DIR}/src")
 +target_link_libraries(wallet-lws-storage-probe monero-lws-db monero-lws-wire-json monero::libraries)
++
++add_executable(wallet-lws-rest-fixture rest-fixture.cpp)
++target_include_directories(wallet-lws-rest-fixture PRIVATE "${CMAKE_SOURCE_DIR}/src")
++target_link_libraries(wallet-lws-rest-fixture monero-lws-daemon-common monero::libraries)
 --- a/tests/unit/rest.test.cpp
 +++ b/tests/unit/rest.test.cpp
 @@ -225,6 +225,28 @@

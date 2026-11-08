@@ -6,6 +6,7 @@ import { Vault } from '../vault/index.ts';
 import { ExclusiveSession } from './exclusive-session.ts';
 import { IdleLock } from './idle-lock.ts';
 import { SendWorkflow } from './send.ts';
+import { LightDeletionWorkflow } from './light-deletion.ts';
 import type { SendPreview } from '../transactions/index.ts';
 
 interface UnlockedSession {
@@ -15,6 +16,7 @@ interface UnlockedSession {
   idle: IdleLock;
   exclusive: ExclusiveSession;
   sends: SendWorkflow;
+  lightDeletions: LightDeletionWorkflow;
 }
 
 type StartOperation =
@@ -92,6 +94,29 @@ export class WalletSession extends EventTarget {
       const view = await active.engine.connectLight(connection);
       await this.#checkpoint(active);
       this.#update(view);
+    });
+  }
+
+  async deleteLightAccount(): Promise<void> {
+    await this.#deletion((workflow) => workflow.request());
+  }
+
+  async retryLightDeletions(): Promise<void> {
+    await this.#deletion((workflow) => workflow.retry());
+  }
+
+  async #deletion(
+    operation: (workflow: LightDeletionWorkflow) => Promise<WalletView>,
+  ): Promise<void> {
+    this.#syncRequested = false;
+    clearTimeout(this.#poll);
+    await this.#operation(async (active) => {
+      try {
+        this.#update(await operation(active.lightDeletions));
+      } catch (error) {
+        this.#update(await active.engine.view());
+        throw error;
+      }
     });
   }
 
@@ -219,6 +244,7 @@ export class WalletSession extends EventTarget {
           this.lock();
         }),
         sends: new SendWorkflow(engine, vault),
+        lightDeletions: new LightDeletionWorkflow(engine, vault),
       };
       this.#active = active;
       if (operation.kind !== 'open') await this.#checkpoint(active);

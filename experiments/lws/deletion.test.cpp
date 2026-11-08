@@ -55,7 +55,9 @@ LWS_CASE("wallet deletion authentication and registration replay")
   EXPECT(db.add_account(wallet.address, wallet.view));
   EXPECT(read_account(db, wallet).id > initial.id);
   EXPECT(!db.delete_account(wallet.address, wallet.view, token));
-  EXPECT(!db.prepare_account_delete(other.address, other.view));
+  const auto absent = MONERO_UNWRAP(db.prepare_account_delete(other.address, other.view));
+  EXPECT(MONERO_UNWRAP(db.delete_account(other.address, other.view, absent)));
+  EXPECT(!MONERO_UNWRAP(db.start_read()).get_account(other.address));
   const auto replacement = MONERO_UNWRAP(db.prepare_account_delete(wallet.address, wallet.view));
   EXPECT(replacement != token);
   EXPECT(!db.delete_account(wallet.address, wallet.view, token));
@@ -73,7 +75,8 @@ LWS_CASE("wallet deletion removes pending credentials and protects administrator
   const auto accepted = db.accept_requests(lws::db::request::create, {&pending.address, 1}, 2000);
   EXPECT(accepted);
   EXPECT(accepted->empty());
-  EXPECT(!db.prepare_account_delete(pending.address, pending.view));
+  const auto absent = MONERO_UNWRAP(db.prepare_account_delete(pending.address, pending.view));
+  EXPECT(MONERO_UNWRAP(db.delete_account(pending.address, pending.view, absent)));
   // A rejected pending request is a different registration after retry.
   EXPECT(db.creation_request(pending.address, pending.view, lws::db::account_flags::default_account, {}));
   const auto rejected_token = MONERO_UNWRAP(db.prepare_account_delete(pending.address, pending.view));
@@ -131,6 +134,7 @@ LWS_CASE("wallet deletion resumes bounded cleanup and preserves shared images")
   EXPECT(db.import_request(wallet.address, last.id, {}));
   const auto token = MONERO_UNWRAP(db.prepare_account_delete(wallet.address, wallet.view));
   EXPECT(!MONERO_UNWRAP(db.delete_account(wallet.address, wallet.view, token)));
+  EXPECT(MONERO_UNWRAP(db.prepare_account_delete(wallet.address, wallet.view)) == token);
   // An unknown token cannot report complete while this address still has data.
   EXPECT(!db.delete_account(wallet.address, wallet.view, crypto::rand<crypto::hash>()));
   EXPECT(!MONERO_UNWRAP(db.start_read()).get_account(wallet.address));

@@ -96,7 +96,7 @@ class StagenetBrowser {
     await this.page.getByLabel('Matching stagenet node URL (HTTPS)', { exact: true }).fill(uri);
     await this.page.getByLabel('Node username (optional)', { exact: true }).fill('fixture');
     await this.page.getByLabel('Node password (optional)', { exact: true }).fill('disposable');
-    await this.page.getByRole('checkbox').check();
+    await this.page.getByRole('checkbox', { name: /I agree to share my private view key/ }).check();
     await this.act('Use selected light wallet service');
   }
 
