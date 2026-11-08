@@ -108,7 +108,33 @@ avoid a maintained server patch but no compatible replacement is established.
 A volatile-only scanner avoids durable key storage but loses registration and
 scan progress on restart and does not meet persistent-service availability.
 
-## Activation gate
+## Approved temporary ngrok test (2026-11-08)
+
+The owner selected ngrok for temporary HTTPS tests instead of choosing a public
+project domain. After disclosure that ordinary ngrok HTTPS terminates TLS in
+ngrok's cloud and can expose addresses, private view keys and request metadata to
+that provider, the owner explicitly approved this only for newly generated,
+disposable, unfunded wallets. Existing/funded profiles, imported backups and
+mainnet wallets must not use this test endpoint. Seed and private spend keys
+remain client-only. This is a temporary exception for disposable test view keys,
+not a changed production privacy policy or a promise of provider-side deletion.
+
+Use a project-only, bounded test gateway and isolated agent configuration. Disable
+local payload inspection/replay and keep inventories, endpoint capabilities,
+credentials and operational evidence ignored. Do not change the owner's global
+ngrok configuration, purchase/upgrade a plan, expose admin APIs or broadcast
+transactions through this fixture. Close the tunnel and disposable scanner after
+the test window; preserve scoped rollback and all other projects. The existing
+approved private ZMQ test-node workflow may be reused with its one-writer database
+rule and restoration of the prior project node. No production service activation
+or mainnet release is authorized by this temporary test decision.
+
+References: [TLS termination](https://ngrok.com/docs/gateway/domains/tls-termination),
+[free-plan limits](https://ngrok.com/docs/pricing-limits/free-plan-limits), and
+[agent configuration](https://ngrok.com/docs/gateway/agent/config/v3). Ordinary
+HTTPS does not become end-to-end confidential merely by disabling inspection.
+
+## Public release gate
 
 Before persistent/public activation, review the integrated server/client source,
 required checks, encrypted storage recovery, authenticated deletion, the selected no-backup policy,

@@ -9,7 +9,10 @@ private view key and required wallet metadata. Seeds and private spend keys stay
 client-only. Transaction validation, explicit approval and signing stay local.
 The server can observe incoming transactions; the model is not confidential
 against the scanner operator. No third-party scanner, new fee, public deployment
-or replacement cryptographic implementation is selected by this decision.
+or replacement cryptographic implementation is selected by this decision. The
+owner later approved a separate temporary ngrok HTTPS exception exclusively for
+new, disposable, unfunded test wallets, after disclosure of view-key visibility
+to ngrok. See the service delivery record; production privacy is unchanged.
 
 The existing stagenet wallet and its verified encrypted backups remain the legacy
 baseline. Client integration, assembled disposable validation and the 1,000-receipt
