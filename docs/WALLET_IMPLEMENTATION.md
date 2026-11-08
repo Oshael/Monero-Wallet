@@ -119,7 +119,7 @@ selection, unsigned/signed inspection and relay remain the existing paths.
 Light preparation opens a native view-only cache and restores its verified
 height without downloading blocks for a local chain scan.
 
-The final native source compiled cleanly in a second checkout and reproduced
+The pre-endpoint-path native source compiled cleanly in a second checkout and reproduced
 the incremental artifact byte for byte:
 
 | Artifact                | SHA-256                                                            |
@@ -132,6 +132,31 @@ The worker is 8,159,017 bytes. The ESM source-map inventory retained the same
 62 dependency roots with no additions or removals. The generated client and
 native notices accompany the development build. This is not an independent
 security audit or an approved public release.
+
+The subsequent temporary HTTPS test exposed a native endpoint-path routing bug,
+described in the [native recipe](../experiments/wallet-mv3/README.md#native-rpc-endpoint-paths).
+The corrected build preserves each selected RPC path for JSON/binary calls and
+clears it on host/port reselection. Two wallet connections remain independent.
+Both complete patches apply to their pinned pristine source files; the incremental
+and independent clean native builds match byte for byte:
+
+| Artifact                | SHA-256                                                            |
+| ----------------------- | ------------------------------------------------------------------ |
+| Native glue             | `ded0635b9f48f845ebabbff60ec3446e4f271d856d7f8488995d04f0fd49edc5` |
+| Embedded WASM           | `5423c711d27c19cff111a3ad0cd6cb5e766ca71001f9134e97c3ca530d018632` |
+| Matching classic worker | `b3b62d6f81ad8a954c3600c6b7dca6a1ebb11d47d159005d27ff9b098463c5e4` |
+
+The matching worker is 8,159,951 bytes. Typed lint, strict types, boundaries,
+formatting, all 69 application/quality tests and the development extension build
+passed with this candidate. Native RPC path/reselection, Digest authentication,
+binary/size/redirect/timeout regressions passed. The native light-wallet regtest
+passed again with this engine, including ownership/commitment rejection,
+keys-only outgoing recovery, exact fee/change and detached-confirmation input
+reservation. The path prefix belongs to the
+native connection instance; no global mutable routing state, UI rule, dependency,
+crypto change, new secret accessor or persistence format was added. This fixes an
+existing transport responsibility. Live funded ngrok validation is still in progress
+and must not be inferred from these completed checks.
 
 The real offline-regtest LWS contract passed primary and subaddress receipt,
 including index 999; exact unlocked balance, fee and change; local unsigned

@@ -141,6 +141,22 @@ References: [TLS termination](https://ngrok.com/docs/gateway/domains/tls-termina
 [agent configuration](https://ngrok.com/docs/gateway/agent/config/v3). Ordinary
 HTTPS does not become end-to-end confidential merely by disabling inspection.
 
+The free-tier warning was observed returning HTTP 200 with non-JSON text to
+Chromium's `fetch`, while the native HTTP adapter received JSON. The isolated
+browser fixture adds the documented `ngrok-skip-browser-warning` request header
+to its own contexts. This bypass belongs to the temporary provider fixture; no
+ngrok-specific header or dependency is added to the shipped wallet. A manually
+configured free ngrok test also needs the provider's documented warning bypass;
+this is not the production service or a customer onboarding requirement.
+
+The funded test also exposed a fixture allowlist omission: native history
+reconciliation requests `/get_transaction_pool_hashes.bin`. The gateway rejected
+that read-only route with HTTP 403 after light-data import had succeeded. The
+fixture now permits this bounded call, while node administration and block-download
+routes remain blocked. No transaction was transmitted in that failed attempt.
+The browser test now treats the background-failure message as an immediate failure,
+instead of waiting on the last displayed synchronization state.
+
 ## Public release gate
 
 Before persistent/public activation, review the integrated server/client source,

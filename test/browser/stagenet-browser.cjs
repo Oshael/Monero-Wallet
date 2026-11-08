@@ -127,6 +127,8 @@ class StagenetBrowser {
     const deadline = performance.now() + 15 * 60_000;
     while (performance.now() < deadline) {
       const state = await this.page.locator('#wallet-sync').textContent();
+      const status = await this.page.locator('#status').textContent();
+      assert.ok(!status.startsWith('An operation failed.'), 'Background wallet operation failed.');
       assert.ok(!state.startsWith('failed') && !state.startsWith('Waiting for the selected node'));
       if (state.startsWith('synced')) return;
       await this.page.waitForTimeout(5000);

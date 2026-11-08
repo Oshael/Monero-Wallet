@@ -174,6 +174,33 @@ The [daemon runner](check-wallet-daemon.cjs) starts the signature-verified offic
 
 The permanent runner failed with an `httpRequest` timeout on the worker before the correction and passed with the corrected worker. It observed HTTP 200 and daemon status `OK` for the correct password, HTTP 401 for a wrong password, an authenticated wallet connection and wallet/daemon height 1 after synchronization. JSON, binary and HTTP 503 fixtures also passed. Independent CLI recovery, mnemonic checksum rejection and both entropy checks passed with the corrected candidate. Type checking and the worker artifact verifier passed; the native WASM hash was unchanged. The complete patch applied cleanly to the pinned upstream source and matched all four tested input files.
 
+### Native RPC endpoint paths
+
+The subsequent ngrok development test exposed a native routing bug: JavaScript
+status requests preserved the selected endpoint path, but the native HTTP client
+sent `/get_outs.bin` to the origin root. The capability-protected test gateway
+correctly rejected that request with HTTP 403. No transaction was sent during
+diagnosis.
+
+The maintained native patches make the full-address `set_server` overload virtual
+and preserve its parsed path on each `http_client_wasm` instance. JSON and binary
+requests use that same prefix; direct host/port selection clears it. This uses the
+existing Monero URL parser, rejects query/fragment suffixes and trims trailing
+slashes. No provider-specific behavior, global routing map or cryptographic change
+is introduced. Both native patches must be rebuilt together; do not mix binary
+objects from the old/new virtual interface.
+
+Stage [check-native-rpc-path.cjs](check-native-rpc-path.cjs) beside the existing
+daemon fixture and run it with the same Playwright/Chromium arguments as
+`check-wallet-daemon.cjs`. The offline fixture uses the official daemon's response
+shape with distinct heights for two endpoint paths and the origin root. It checks
+trailing-slash handling, isolation between wallet clients and explicit reselection.
+The previous worker returned the root height for both prefixed connections and
+failed the assertions; the corrected worker passed. Digest authentication and the
+existing binary/size/redirect/timeout transport checks passed again. A second clean
+native build reproduced the incremental glue byte for byte. This is development
+validation, not an independent security review.
+
 To reproduce, stage the project-built worker under `build_dir/source/dist/`. Extract `monerod` from the same verified official Linux release archive used for CLI recovery, place it at `build_dir/monerod` and make it executable. Run as an unprivileged user in a disposable container with external networking disabled, no published ports and explicit CPU, memory and process limits. The recorded run used two CPUs, 4 GiB memory, Playwright `1.62.1`, Chromium `151.0.7922.34` and its enabled sandbox. Check fixture ownership against the container user's actual UID/GID before running.
 
 ```sh
