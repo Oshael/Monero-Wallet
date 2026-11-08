@@ -8,6 +8,8 @@ import { generate, restoredRegtestWallet } from './regtest-wallet.ts';
 import type { CandidateWallet } from 'wallet-engine-client';
 
 const password = 'disposable local wallet key password';
+// Early regtest fees make tiny receipts unsuitable for a many-input spending benchmark.
+const receiptAmount = 100_000_000_000n;
 export async function runLightWalletCapacity(
   origin: string,
   scanner: string,
@@ -53,7 +55,7 @@ async function capacityScenario(
     const importStarted = performance.now();
     await wallet.importLightWalletData(JSON.stringify(data));
     const importMs = Math.round(performance.now() - importStarted);
-    const expected = 1_000_000_000n * BigInt(count);
+    const expected = receiptAmount * BigInt(count);
     requireCapacity((await wallet.getBalance()) === expected);
     requireCapacity((await wallet.getUnlockedBalance()) === expected);
     requireCapacity((await wallet.getSubaddresses(0)).length === count);
@@ -65,8 +67,8 @@ async function capacityScenario(
     });
     const intent = createIntent({
       address: await funder.getPrimaryAddress(),
-      amount: '50000000000',
-      maximumFee: '10000000000',
+      amount: (50n * receiptAmount).toString(),
+      maximumFee: (10n * receiptAmount).toString(),
     });
     const mark = capture.mark();
     const prepareStarted = performance.now();
@@ -115,6 +117,8 @@ async function capacityScenario(
       prepareMs,
       signMs,
       cacheBytes,
+      receiptAtoms: receiptAmount.toString(),
+      preparedFeeAtoms: prepared.fee,
     };
   } catch (error) {
     return {
@@ -137,49 +141,27 @@ function capacityDiagnostic(error: unknown): string {
   const message = diagnosticMessage(error).toLowerCase();
   const categories = [
     'too large',
+    'too big',
+    'tx not possible',
     'not enough',
-    'Not enough',
-    'funds',
-    'No outputs',
-    'No transaction',
+    'unlocked balance',
     'ring',
     'commitment',
     'key image',
-    'Invalid',
-    'Unbound',
+    'invalid',
+    'unbound',
     'daemon',
-    'RPC',
+    'rpc',
     'deadline',
     'intent',
     'fee',
     'source',
     'budget',
-    'exceeded',
-    'too big',
-    'balance',
     'timeout',
-    'out',
-    'Failed',
     'scan request',
-    'tx',
-    'possible',
-    'construct',
-    'key',
-    'mask',
-    'spend',
-    'unlock',
-    'response',
-    'function',
-    'undefined',
-    'size',
-    'argument',
-    'assert',
-    'expected',
-    'must',
-    'not',
   ];
   return (
-    categories.filter((category) => message.includes(category.toLowerCase())).join('-') ||
+    categories.filter((category) => message.includes(category)).join('-') ||
     `contract-${typeof error}`
   );
 }
@@ -208,7 +190,10 @@ async function fundReceipts(input: {
   for (let start = 0; start < input.count; start += 14) {
     const destinations = [];
     for (let index = start; index < Math.min(start + 14, input.count); index++) {
-      destinations.push({ address: await input.wallet.getAddress(0, index), amount: '1000000000' });
+      destinations.push({
+        address: await input.wallet.getAddress(0, index),
+        amount: receiptAmount.toString(),
+      });
     }
     await input.funder.createTx({ accountIndex: 0, destinations, canSplit: false, relay: true });
   }

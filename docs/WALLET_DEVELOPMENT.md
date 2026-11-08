@@ -145,7 +145,10 @@ remaining delivery gates and independent human security review.
 ## Light-wallet browser contracts
 
 `build-light-wallet-probe.mjs` builds the funded correctness and 1,000-receipt
-capacity probes. Stage their generated modules with `light-wallet-fixture.cjs`,
+capacity probes. The capacity runner accepts an optional `inputs` argument
+(after the browser executable) for a 64-receipt isolation case. Both cases retain
+a many-input send and use receipt values that cover the early regtest chain's
+fee economics; they do not change product fee or dust policies. Stage their generated modules with `light-wallet-fixture.cjs`,
 `light-server-fixture.cjs`, the corresponding `check-light-*.cjs`, vendor files,
 the matching classic worker, the signature-verified official daemon and the
 pinned LWS daemon. Use the disposable daemon fixture in an isolated network

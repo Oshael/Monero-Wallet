@@ -12,7 +12,8 @@ against the scanner operator. No third-party scanner, new fee, public deployment
 or replacement cryptographic implementation is selected by this decision.
 
 The existing stagenet wallet and its verified encrypted backups remain the legacy
-baseline. Client integration and assembled disposable validation passed; no light-wallet
+baseline. Client integration, assembled disposable validation and the 1,000-receipt
+regtest capacity case passed; no light-wallet
 release or public service is adopted. Adoption must preserve
 original encrypted backups, labels and pending signed/uncertain transactions.
 A disconnected or behind scanner must not establish spendability or cause a

@@ -106,12 +106,26 @@ silently compacted. These small disposable stagenet histories are not a
 many-output or mainnet capacity claim. The scanner was already indexed for the
 funded account. The temporary bridges were stopped after measurement.
 
-The additional 1,000-receipt regtest passed native import and exact total/unlocked
-balances, but its many-input send failed during preparation. That capacity
-scenario is not reported as passing; a reduced-input diagnostic is in progress.
-No transaction was signed or broadcast in the failed phase. Existing funded
-correctness, recovery and assembled stagenet results above remain valid. Do not
-infer general many-output spending support or production capacity from them.
+The additional capacity fixture passed with 1,000 received RingCT outputs across
+account 0 indexes 0–999 and a send requiring many inputs. It preserved the exact
+unlocked balance, locally inspected/signed the transaction, observed no block/hash
+scan RPC during preparation and passed private canaries. Native keys/cache
+serialization totaled 1,922,472 bytes. On the isolated test host, import took
+2,051 ms, preparation 3,070 ms and signing 1,366 ms; these fit the existing
+20-second import and 30-second command budgets in that environment. This is
+one offline-regtest dataset, not a representative mainnet/server-capacity claim.
+
+The first dataset used 0.001-unit receipts and a 0.05-unit send and was rejected
+with native `tx not possible`. The isolated early chain reported a base fee of
+1,200,000 atoms per byte. The corrected fixture uses 0.1-unit receipts and a
+5-unit send, still requiring at least 50 inputs before fees, without changing
+native fees, dust policy, selection, validation or application limits. A reduced
+64-receipt comparison passed with a 41,352,000,000-atom fee; the 1,000-receipt
+run passed with a 41,524,800,000-atom fee. The original reduced dataset's total
+0.064 units could not fund its 0.05-unit send plus that many-input fee. The
+initial failed fixture is retained as diagnostic history, not reported as a
+successful spending test. No real funds were used and failed preparation did
+not sign or relay a transaction.
 
 ## Module ownership
 
